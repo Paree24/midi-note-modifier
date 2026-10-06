@@ -9,6 +9,11 @@ remembered as the default for new instances), bold Lato throughout
 
 ## Build
 
+Requires CMake ≥ 3.22, Git, and a C++17 compiler. JUCE is fetched
+automatically on first configure (internet needed).
+
+### Linux
+
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
@@ -18,7 +23,55 @@ Outputs:
 - `build/MidiNoteModifier_artefacts/Release/VST3/Midi Note Modifier.vst3`
 - `build/MidiNoteModifier_artefacts/Release/Standalone/Midi Note Modifier`
 
-Install on Linux: copy the `.vst3` bundle to `~/.vst3/`.
+Install: copy the `.vst3` bundle to `~/.vst3/`.
+
+### Windows
+
+Prerequisites: Visual Studio 2022 (free Community edition) with the
+"Desktop development with C++" workload, plus Git and CMake
+(`winget install Kitware.CMake Git.Git`).
+
+```powershell
+git clone https://github.com/Paree24/midi-note-modifier.git
+cd midi-note-modifier
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
+```
+
+Outputs:
+- `build\MidiNoteModifier_artefacts\Release\VST3\Midi Note Modifier.vst3`
+- `build\MidiNoteModifier_artefacts\Release\Standalone\Midi Note Modifier.exe`
+
+Install: copy the `.vst3` bundle to `C:\Program Files\Common Files\VST3\`.
+
+### macOS
+
+Prerequisites: Xcode from the App Store (open it once to accept the license),
+plus Git and CMake (`brew install git cmake`).
+
+```bash
+git clone https://github.com/Paree24/midi-note-modifier.git
+cd midi-note-modifier
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+```
+
+Outputs:
+- `build/MidiNoteModifier_artefacts/Release/VST3/Midi Note Modifier.vst3`
+- `build/MidiNoteModifier_artefacts/Release/Standalone/Midi Note Modifier.app`
+
+Install: copy the `.vst3` bundle to
+`~/Library/Audio/Plug-Ins/VST3/` (just you) or
+`/Library/Audio/Plug-Ins/VST3/` (all users).
+
+Notes:
+- This builds natively for your Mac's architecture. For a universal
+  (Intel + Apple Silicon) binary add
+  `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"` to the configure step.
+- Local builds are unsigned: on first load macOS may block the plugin —
+  allow it in System Settings → Privacy & Security, or right-click → Open
+  for the Standalone. Distributing outside the App Store requires signing
+  and notarizing with an Apple Developer ID (`codesign`, `notarytool`).
 
 ## Use
 
