@@ -1,0 +1,19 @@
+# build artefacts (JUCE is fetched by CMake on configure)
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.o
+*.a
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# local plugin installs / user data
+*.vst3
