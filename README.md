@@ -12,7 +12,9 @@ remembered as the default for new instances), bold Lato throughout
 ## Build
 
 Requires CMake ≥ 3.22, Git, and a C++17 compiler. JUCE is fetched
-automatically on first configure (internet needed).
+automatically on first configure (internet needed). CI builds every push
+for Linux/Windows/macOS: each green `main` commit refreshes the rolling
+`auto` prerelease, while `v*` tags get stable releases.
 
 ### Linux
 
