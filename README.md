@@ -1,5 +1,7 @@
 # Midi Note Modifier (VST3 / Standalone)
 
+[![Build](https://github.com/Paree24/midi-note-modifier/actions/workflows/build.yml/badge.svg)](https://github.com/Paree24/midi-note-modifier/actions/workflows/build.yml)
+
 JUCE MIDI-FX plugin built from `PRD.md`: sits before an instrument and applies
 **Scale snap → Chord → Arp**, with sustain/latch handling, panic, and DAW-synced arp.
 Dark grey UI with swappable accent themes (Purple #D0ACFF/#6228AD/#3F226E,
@@ -124,3 +126,9 @@ changing scale/chords mid-hold only affects new notes.
 Note: `scale`/`arpRate`/`chd` parameter layouts changed between versions, so
 automation and state from older builds of this plugin will not map 1:1
 (Custom scale still resolves).
+
+## Disclaimer
+
+Disclaimer: this project is vibe-coded for personal use. It is provided
+as-is, without warranty of any kind. The author is not responsible for
+anything — Use at your own risk.
