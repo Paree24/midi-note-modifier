@@ -68,8 +68,8 @@ public:
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
 private:
-    struct Voice { int snapped = -1; std::vector<int> emitted; };
-    struct ArpTick { int sampleOffset = 0; int note = -1; };
+    struct Voice { int snapped = -1; int channel = 1; std::vector<int> emitted; };
+    struct PendingOn { juce::int64 time = 0; int note = 0; int channel = 1; float vel = 0.0f; };
 
     double currentSampleRate = 44100.0;
 
@@ -78,6 +78,13 @@ private:
     std::set<int> sustainedNotes;            // emitted notes with note-off deferred
     std::vector<std::pair<int,int>> deferredOffs; // (note, channel)
     bool sustainDown = false;
+
+    // Plain (non-arp) output bookkeeping: per (channel, note) on-count so that two
+    // inputs snapping to the same output note don't cut each other off, plus
+    // strummed note-ons that fall beyond the current block.
+    int outRefCount[16][128] {};
+    std::vector<PendingOn> pendingOns;
+    juce::int64 sampleClock = 0;
 
     // Arp pool (post scale+chord base notes, pre octave expansion)
     std::vector<int> arpPool;       // unique sorted base notes
@@ -93,7 +100,10 @@ private:
     bool arpImmediatePending = false;
     int arpImmediatePos = 0;
     int arpImmediateCh = 1;
-    bool latchHeldNotesWereReleased = false;
+    int gateOffIn = -1;           // pending gate note-off, samples from block start
+    bool arpWasSynced = false;
+    bool prevLatch = false;
+    bool prevArpOn = false;
 
     struct Audition { bool on; int note; int vel; };
     std::vector<Audition> auditionQueue;
@@ -114,6 +124,13 @@ private:
     void noteOnOut(juce::MidiBuffer& out, int samplePos, int note, int channel, float vel);
     void noteOffOut(juce::MidiBuffer& out, int samplePos, int note, int channel);
     void killAllSound(juce::MidiBuffer& out);
+    void resetAllNoteState();
+    void voiceNoteOn(juce::MidiBuffer& out, int samplePos, int note, int channel, float vel);
+    void voiceNoteOff(juce::MidiBuffer& out, int samplePos, int note, int channel);
+    void releaseVoiceNote(juce::MidiBuffer& out, int samplePos, int note, int channel);
+    void addToArpPool(const std::vector<int>& notes);
+    void removeFromArpPool(const std::vector<int>& notes);
+    void clearArpPool();
     int pickArpNote();
     void resetArpPosition() { arpStepIndex = 0; arpPingDir = 1; }
 

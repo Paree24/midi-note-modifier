@@ -113,7 +113,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout MidiNoteModifierProcessor::c
     return { p.begin(), p.end() };
 }
 
-void MidiNoteModifierProcessor::prepareToPlay(double sampleRate, int) { currentSampleRate = sampleRate; }
+void MidiNoteModifierProcessor::prepareToPlay(double sampleRate, int)
+{
+    juce::ScopedLock sl(stateLock);
+    currentSampleRate = sampleRate;
+    pendingOns.reserve(256);
+}
 
 bool MidiNoteModifierProcessor::isBusesLayoutSupported(const BusesLayout&) const { return true; }
 
@@ -302,10 +307,10 @@ void MidiNoteModifierProcessor::storeCustomChordTypesToState()
 void MidiNoteModifierProcessor::loadCustomChordTypesFromState()
 {
     auto node = apvts.state.getChildWithName("CUSTOM_CHORDS");
-    if (! node.isValid()) return;
     juce::ScopedLock sl(chordTypeLock);
     for (int s = 0; s < kNumCustomChords; ++s)
     {
+        if (! node.isValid()) { customChordNames[s] = ""; customChordIvs[s] = { 0 }; continue; }
         customChordNames[s] = node.getProperty("name" + juce::String(s), "").toString()
                                   .substring(0, 24);
         customChordIvs[s] = stringToIvs(node.getProperty("iv" + juce::String(s), "0").toString());
@@ -396,6 +401,8 @@ int MidiNoteModifierProcessor::buildChordForSnapped(int snapped, std::vector<int
     bool lower = apvts.getRawParameterValue("invLower")->load() > 0.5f;
     bool bass = apvts.getRawParameterValue("bassBelow")->load() > 0.5f;
     applyInversionBass(out, inv, lower, bass);
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return deg;
 }
 
@@ -449,7 +456,77 @@ void MidiNoteModifierProcessor::killAllSound(juce::MidiBuffer& out)
     }
 }
 
+void MidiNoteModifierProcessor::resetAllNoteState()
+{
+    voices.clear();
+    clearArpPool();
+    sustainedNotes.clear(); deferredOffs.clear();
+    pendingOns.clear();
+    for (auto& ch : outRefCount) std::fill(std::begin(ch), std::end(ch), 0);
+    arpImmediatePending = false;
+    arpCurrentNote = -1;
+    gateOffIn = -1;
+    nextPpq = -1.0;
+    activeVoices.store(0);
+}
+
+void MidiNoteModifierProcessor::voiceNoteOn(juce::MidiBuffer& out, int pos, int note, int ch, float vel)
+{
+    ++outRefCount[(ch - 1) & 15][note & 127];
+    noteOnOut(out, pos, note, ch, vel);
+}
+
+void MidiNoteModifierProcessor::voiceNoteOff(juce::MidiBuffer& out, int pos, int note, int ch)
+{
+    auto& rc = outRefCount[(ch - 1) & 15][note & 127];
+    if (rc > 0) --rc;
+    if (rc == 0) noteOffOut(out, pos, note, ch);
+}
+
+// Release one plain voice note: a strummed note that hasn't sounded yet is
+// simply cancelled, otherwise its note-off is sent (ref-counted).
+void MidiNoteModifierProcessor::releaseVoiceNote(juce::MidiBuffer& out, int pos, int note, int ch)
+{
+    for (auto it = pendingOns.begin(); it != pendingOns.end(); ++it)
+        if (it->note == note && it->channel == ch)
+        {
+            pendingOns.erase(it);
+            return;
+        }
+    voiceNoteOff(out, pos, note, ch);
+}
+
+void MidiNoteModifierProcessor::addToArpPool(const std::vector<int>& notes)
+{
+    for (int n : notes)
+        if (arpRefCount[n]++ == 0)
+        {
+            arpPool.insert(std::lower_bound(arpPool.begin(), arpPool.end(), n), n);
+            arpPlayedOrder.push_back(n);
+        }
+}
+
+void MidiNoteModifierProcessor::removeFromArpPool(const std::vector<int>& notes)
+{
+    for (int n : notes)
+    {
+        auto rc = arpRefCount.find(n);
+        if (rc != arpRefCount.end() && --rc->second <= 0)
+        {
+            arpRefCount.erase(rc);
+            arpPool.erase(std::remove(arpPool.begin(), arpPool.end(), n), arpPool.end());
+            arpPlayedOrder.erase(std::remove(arpPlayedOrder.begin(), arpPlayedOrder.end(), n), arpPlayedOrder.end());
+        }
+    }
+}
+
+void MidiNoteModifierProcessor::clearArpPool()
+{
+    arpPool.clear(); arpPlayedOrder.clear(); arpRefCount.clear();
+}
+
 int MidiNoteModifierProcessor::pickArpNote()
+
 {
     if (arpPool.empty()) return -1;
     int mode = (int) apvts.getRawParameterValue("arpMode")->load();
@@ -509,13 +586,9 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     {
         juce::ScopedLock sl(stateLock);
         killAllSound(out);
-        voices.clear();
-        arpPool.clear(); arpPlayedOrder.clear(); arpRefCount.clear();
-        sustainedNotes.clear(); deferredOffs.clear();
-        arpImmediatePending = false;
-        if (arpCurrentNote >= 0) arpCurrentNote = -1;
-        nextPpq = -1.0;
-        activeVoices.store(0);
+        resetAllNoteState();
+        auditionQueue.clear();
+        sampleClock += numSamples;
         midi.swapWith(out);
         return;
     }
@@ -532,21 +605,58 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     float swingPct = apvts.getRawParameterValue("swing")->load();
     auto intervals = currentIntervals();
 
-    static bool prevLatch = false;
-    if (! arpLatch && prevLatch)
     {
-        // latch released: clear latched pool
         juce::ScopedLock sl(stateLock);
-        arpPool.clear(); arpPlayedOrder.clear(); arpRefCount.clear(); voices.clear();
-        arpImmediatePending = false;
-        if (arpCurrentNote >= 0)
+
+        // Arp switched on/off while notes are held: hand the held notes over
+        // instead of leaving them stuck in the other mode's bookkeeping.
+        if (arpOn != prevArpOn)
         {
-            noteOffOut(out, 0, arpCurrentNote, arpCurrentChannel);
-            arpCurrentNote = -1;
+            if (arpOn)
+            {
+                for (auto& d : deferredOffs)
+                    if (d.first >= 0) releaseVoiceNote(out, 0, d.first, d.second);
+                deferredOffs.clear();
+                clearArpPool();
+                for (auto& [inNote, v] : voices)
+                {
+                    for (int n : v.emitted) releaseVoiceNote(out, 0, n, v.channel);
+                    addToArpPool(v.emitted);
+                }
+                if (! arpPool.empty())
+                {
+                    resetArpPosition();
+                    arpImmediatePending = true; arpImmediatePos = 0;
+                    arpImmediateCh = voices.begin()->second.channel;
+                }
+            }
+            else
+            {
+                // held keys go silent until re-pressed; the arp note is stopped below
+                clearArpPool();
+                voices.clear();
+                deferredOffs.clear();
+            }
+            prevArpOn = arpOn;
         }
-        nextPpq = -1.0;
+
+        // Latch released: keep arpeggiating only the keys still held.
+        if (! arpLatch && prevLatch && arpOn)
+        {
+            clearArpPool();
+            for (auto& [inNote, v] : voices) addToArpPool(v.emitted);
+        }
+        prevLatch = arpLatch;
+
+        // Editor keyboard auditions are fed through the normal MIDI path (channel 1).
+        for (auto& a : auditionQueue)
+        {
+            int note = juce::jlimit(0, 127, a.note);
+            midi.addEvent(a.on ? juce::MidiMessage::noteOn(1, note, (juce::uint8) juce::jlimit(1, 127, a.vel))
+                               : juce::MidiMessage::noteOff(1, note), 0);
+        }
+        auditionQueue.clear();
     }
-    prevLatch = arpLatch;
 
     // --- Transport: DAW tempo only. When stopped, keep the last seen tempo
     // so the arp can free-run; there is no manual BPM (this is a plugin).
@@ -565,95 +675,13 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     }
     hostPlaying.store(playing);
 
-    // --- Audition queue (from editor keyboard) ---
-    {
-        juce::ScopedLock sl(stateLock);
-        for (auto& a : auditionQueue)
-        {
-            if (a.on)
-            {
-                int snapped = a.note;
-                if (scaleLock)
-                    snapped = whiteKeys ? Scales::degreeMapNote(a.note, root, intervals)
-                                        : Scales::snapNote(a.note, root, intervals, snapMode);
-                std::vector<int> chord; int deg = -1;
-                // reuse build (reads atomics, fine)
-                // inline simplified: build without lock recursion issues
-                {
-                    juce::ScopedUnlock ul(stateLock);
-                    buildChordForSnapped(snapped, chord, deg);
-                }
-                float vel = juce::jlimit(0.0f, 1.0f, a.vel / 127.0f);
-                if (arpOn)
-                {
-                    bool wasEmpty = arpPool.empty();
-                    for (int n : chord)
-                    {
-                        if (arpRefCount[n]++ == 0)
-                        {
-                            arpPool.push_back(n);
-                            std::sort(arpPool.begin(), arpPool.end());
-                            arpPlayedOrder.push_back(n);
-                        }
-                    }
-                    arpLastVel = vel;
-                    voices[a.note] = { snapped, chord };
-                    if (wasEmpty)
-                    {
-                        resetArpPosition();
-                        arpImmediatePending = true; arpImmediatePos = 0; arpImmediateCh = 1;
-                    }
-                }
-                else
-                {
-                    int i = 0;
-                    for (int n : chord)
-                    {
-                        int off = (int) (i * strumMs * currentSampleRate / 1000.0);
-                        noteOnOut(out, juce::jmin(off, juce::jmax(0, numSamples - 1)), n, 1, vel);
-                        ++i;
-                    }
-                    voices[a.note] = { snapped, chord };
-                }
-                lastInputNote.store(a.note); lastSnappedNote.store(snapped);
-            }
-            else
-            {
-                auto it = voices.find(a.note);
-                if (it != voices.end())
-                {
-                    if (arpOn)
-                    {
-                        if (! arpLatch && ! sustainDown)
-                            for (int n : it->second.emitted)
-                            {
-                                auto rc = arpRefCount.find(n);
-                                if (rc != arpRefCount.end() && --rc->second <= 0)
-                                {
-                                    arpRefCount.erase(rc);
-                                    arpPool.erase(std::remove(arpPool.begin(), arpPool.end(), n), arpPool.end());
-                                    arpPlayedOrder.erase(std::remove(arpPlayedOrder.begin(), arpPlayedOrder.end(), n), arpPlayedOrder.end());
-                                }
-                            }
-                        voices.erase(it);
-                    }
-                    else
-                    {
-                        for (int n : it->second.emitted) noteOffOut(out, 0, n, 1);
-                        voices.erase(it);
-                    }
-                }
-            }
-        }
-        auditionQueue.clear();
-        activeVoices.store((int) voices.size() + (arpOn && arpCurrentNote >= 0 ? 1 : 0));
-    }
+    const int strumStep = (int) (strumMs * currentSampleRate / 1000.0);
 
     // --- Incoming MIDI ---
     for (const auto meta : midi)
     {
         const auto msg = meta.getMessage();
-        int pos = meta.samplePosition;
+        int pos = juce::jlimit(0, juce::jmax(0, numSamples - 1), meta.samplePosition);
 
         if (msg.isNoteOn())
         {
@@ -669,33 +697,40 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             buildChordForSnapped(snapped, chord, deg);
 
             juce::ScopedLock sl(stateLock);
+            bool poolWasEmpty = arpPool.empty();
+
             // retrigger same input note: release old first
             auto old = voices.find(inNote);
             if (old != voices.end())
             {
-                if (! arpOn)
+                if (arpOn)
+                {
+                    removeFromArpPool(old->second.emitted);
+                    // drop any pool removal still waiting on the sustain pedal
+                    deferredOffs.erase(std::remove(deferredOffs.begin(), deferredOffs.end(),
+                                                   std::make_pair(-1000 - inNote, old->second.channel)),
+                                       deferredOffs.end());
+                }
+                else
                     for (int n : old->second.emitted)
                     {
-                        if (sustainDown) deferredOffs.emplace_back(n, ch);
-                        else noteOffOut(out, pos, n, ch);
+                        if (sustainDown) deferredOffs.emplace_back(n, old->second.channel);
+                        else releaseVoiceNote(out, pos, n, old->second.channel);
                     }
                 voices.erase(old);
             }
 
             if (arpOn)
             {
-                bool wasEmpty = arpPool.empty();
-                for (int n : chord)
+                // latch: a new chord after all keys were released replaces the latched one
+                if (arpLatch && voices.empty() && ! poolWasEmpty)
                 {
-                    if (arpRefCount[n]++ == 0)
-                    {
-                        arpPool.push_back(n);
-                        std::sort(arpPool.begin(), arpPool.end());
-                        arpPlayedOrder.push_back(n);
-                    }
+                    clearArpPool();
+                    resetArpPosition();
                 }
+                addToArpPool(chord);
                 arpLastVel = vel;
-                if (wasEmpty)
+                if (poolWasEmpty)
                 {
                     // Fire the first arp step right on this note-on: no trigger latency.
                     resetArpPosition();
@@ -704,68 +739,55 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             }
             else
             {
-                int i = 0;
-                for (int n : chord)
+                for (size_t i = 0; i < chord.size(); ++i)
                 {
-                    int off = pos + (int) (i * strumMs * currentSampleRate / 1000.0);
-                    off = juce::jlimit(0, juce::jmax(0, numSamples - 1), off);
-                    noteOnOut(out, off, n, ch, vel);
-                    ++i;
+                    int off = (int) i * strumStep;
+                    if (off == 0) voiceNoteOn(out, pos, chord[i], ch, vel);
+                    else pendingOns.push_back({ sampleClock + pos + off, chord[i], ch, vel });
                 }
             }
-            voices[inNote] = { snapped, chord };
+            voices[inNote] = { snapped, ch, chord };
             lastInputNote.store(inNote); lastSnappedNote.store(snapped);
         }
         else if (msg.isNoteOff())
         {
             int inNote = msg.getNoteNumber();
-            int ch = msg.getChannel();
             juce::ScopedLock sl(stateLock);
             auto it = voices.find(inNote);
-            if (it != voices.end())
+            if (it == voices.end()) continue;
+            const int vch = it->second.channel;
+
+            if (arpOn)
             {
-                if (arpOn)
+                if (arpLatch)
+                    voices.erase(it); // latch keeps the pool, forget the key
+                else if (sustainDown)
                 {
-                    if (arpLatch || sustainDown)
-                    {
-                        if (sustainDown)
-                            deferredOffs.emplace_back(-1000 - inNote, ch); // marker: pool removal deferred
-                    }
-                    else
-                    {
-                        for (int n : it->second.emitted)
-                        {
-                            auto rc = arpRefCount.find(n);
-                            if (rc != arpRefCount.end() && --rc->second <= 0)
-                            {
-                                arpRefCount.erase(rc);
-                                arpPool.erase(std::remove(arpPool.begin(), arpPool.end(), n), arpPool.end());
-                                arpPlayedOrder.erase(std::remove(arpPlayedOrder.begin(), arpPlayedOrder.end(), n), arpPlayedOrder.end());
-                            }
-                        }
-                        voices.erase(it);
-                        if (arpPool.empty() && arpCurrentNote >= 0)
-                        {
-                            noteOffOut(out, pos, arpCurrentNote, arpCurrentChannel);
-                            arpCurrentNote = -1;
-                            nextPpq = -1.0;
-                        }
-                    }
-                    if (arpLatch) voices.erase(it); // latch keeps pool, forget voice mapping
-                    else if (sustainDown) { /* keep voice until sustain up */ }
+                    auto marker = std::make_pair(-1000 - inNote, vch); // pool removal deferred
+                    if (std::find(deferredOffs.begin(), deferredOffs.end(), marker) == deferredOffs.end())
+                        deferredOffs.push_back(marker);
                 }
                 else
                 {
-                    if (sustainDown)
+                    removeFromArpPool(it->second.emitted);
+                    voices.erase(it);
+                    if (arpPool.empty() && arpCurrentNote >= 0)
                     {
-                        for (int n : it->second.emitted) deferredOffs.emplace_back(n, ch);
-                    }
-                    else
-                    {
-                        for (int n : it->second.emitted) noteOffOut(out, pos, n, ch);
-                        voices.erase(it);
+                        noteOffOut(out, pos, arpCurrentNote, arpCurrentChannel);
+                        arpCurrentNote = -1;
+                        gateOffIn = -1;
+                        nextPpq = -1.0;
                     }
                 }
+            }
+            else
+            {
+                for (int n : it->second.emitted)
+                {
+                    if (sustainDown) deferredOffs.emplace_back(n, vch);
+                    else releaseVoiceNote(out, pos, n, vch);
+                }
+                voices.erase(it);
             }
         }
         else if (msg.isSustainPedalOn())
@@ -781,30 +803,21 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             {
                 if (d.first <= -1000) // deferred pool removal, input note = -1000 - first
                 {
-                    int inNote = -1000 - d.first;
-                    auto it = voices.find(inNote);
-                    if (it != voices.end() && ! arpLatch)
+                    auto it = voices.find(-1000 - d.first);
+                    if (it != voices.end())
                     {
-                        for (int n : it->second.emitted)
-                        {
-                            auto rc = arpRefCount.find(n);
-                            if (rc != arpRefCount.end() && --rc->second <= 0)
-                            {
-                                arpRefCount.erase(rc);
-                                arpPool.erase(std::remove(arpPool.begin(), arpPool.end(), n), arpPool.end());
-                                arpPlayedOrder.erase(std::remove(arpPlayedOrder.begin(), arpPlayedOrder.end(), n), arpPlayedOrder.end());
-                            }
-                        }
+                        if (! arpLatch) removeFromArpPool(it->second.emitted);
                         voices.erase(it);
                     }
                 }
-                else noteOffOut(out, pos, d.first, d.second);
+                else releaseVoiceNote(out, pos, d.first, d.second);
             }
             deferredOffs.clear();
             if (arpOn && arpPool.empty() && arpCurrentNote >= 0)
             {
                 noteOffOut(out, pos, arpCurrentNote, arpCurrentChannel);
                 arpCurrentNote = -1;
+                gateOffIn = -1;
                 nextPpq = -1.0;
             }
         }
@@ -812,9 +825,7 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         {
             juce::ScopedLock sl(stateLock);
             killAllSound(out);
-            voices.clear(); arpPool.clear(); arpPlayedOrder.clear(); arpRefCount.clear();
-            if (arpCurrentNote >= 0) arpCurrentNote = -1;
-            nextPpq = -1.0;
+            resetAllNoteState();
         }
         else if (msg.isMidiClock() || msg.isMidiStart() || msg.isMidiStop() || msg.isMidiContinue())
         {
@@ -832,116 +843,101 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         juce::ScopedLock sl(stateLock);
         if (arpOn && ! arpPool.empty())
         {
-            float intervalBeats = getRateBeats();
-            float swingFrac = juce::jlimit(0.0f, 60.0f, swingPct) / 100.0f;
-            float gateFrac = juce::jlimit(0.1f, 1.0f, gatePct / 100.0f);
-            double freeBpm = juce::jmax(20.0, lastHostBpm.load());
+            const double intervalBeats = getRateBeats();
+            const double swingFrac = juce::jlimit(0.0f, 60.0f, swingPct) / 100.0;
+            const double gateFrac = juce::jlimit(0.1f, 1.0f, gatePct / 100.0f);
+            const bool synced = playing && hasPpq;
+            const double bpm = juce::jmax(20.0, synced ? hostBpm : lastHostBpm.load());
+            const double samplesPerBeat = 60.0 / bpm * currentSampleRate;
+            const double tickSamples = intervalBeats * samplesPerBeat;
+            // odd steps are delayed by the swing amount
+            auto swingDelayBeats = [&] { return (arpStepIndex % 2) == 1 ? swingFrac * intervalBeats * 0.5 : 0.0; };
+
+            // One arp step: stop the previous note (at its gate end if that came
+            // first), start the next, and schedule its gate-off, possibly in a
+            // later block. stepLen is the time until the following step.
+            auto fireStep = [&](int sampleOff, int ch, double stepLen)
+            {
+                if (arpCurrentNote >= 0)
+                {
+                    int offPos = (gateOffIn >= 0 && gateOffIn <= sampleOff) ? gateOffIn : sampleOff;
+                    noteOffOut(out, offPos, arpCurrentNote, arpCurrentChannel);
+                }
+                arpCurrentNote = -1;
+                gateOffIn = -1;
+                int n = pickArpNote();
+                if (n >= 0)
+                {
+                    noteOnOut(out, sampleOff, n, ch, arpLastVel);
+                    arpCurrentNote = n;
+                    arpCurrentChannel = ch;
+                    if (gateFrac < 0.98)
+                        gateOffIn = sampleOff + juce::jmax(1, (int) (stepLen * gateFrac));
+                }
+                ++arpStepIndex;
+            };
+
+            if (synced != arpWasSynced)
+            {
+                // transport started: realign to the host grid; stopped: free-run on
+                if (synced) nextPpq = -1.0;
+                else samplesToNextTick = tickSamples;
+                arpWasSynced = synced;
+            }
 
             // First step fires immediately on the triggering note-on: zero trigger latency.
             if (arpImmediatePending)
             {
                 arpImmediatePending = false;
-                if (arpCurrentNote >= 0)
-                    noteOffOut(out, arpImmediatePos, arpCurrentNote, arpCurrentChannel);
-                int n = pickArpNote();
-                if (n >= 0)
-                {
-                    noteOnOut(out, arpImmediatePos, n, arpImmediateCh, arpLastVel);
-                    arpCurrentNote = n;
-                    arpCurrentChannel = arpImmediateCh;
-                }
-                ++arpStepIndex;
-                if (playing && hasPpq)
-                    nextPpq = ppqPos + intervalBeats;
-                else
-                    samplesToNextTick = 60.0 / freeBpm * intervalBeats * currentSampleRate;
+                fireStep(arpImmediatePos, arpImmediateCh, tickSamples);
+                if (synced) nextPpq = ppqPos + arpImmediatePos / samplesPerBeat + intervalBeats;
+                else samplesToNextTick = arpImmediatePos + tickSamples;
             }
 
-            if (playing && hasPpq)
+            int guard = 0;
+            if (synced)
             {
-                double samplesPerBeat = 60.0 / juce::jmax(20.0, hostBpm) * currentSampleRate;
-                double samplesPerPpq = samplesPerBeat; // 1 ppq beat = 1 quarter
-                double blockSpanPpq = numSamples / samplesPerPpq;
-                if (nextPpq < 0)
-                {
-                    nextPpq = std::ceil(ppqPos / intervalBeats) * intervalBeats;
-                    if (nextPpq < ppqPos) nextPpq = ppqPos;
-                    resetArpPosition();
-                }
-                // drop stale scheduler far behind
-                if (nextPpq < ppqPos - intervalBeats * 4)
-                {
-                    nextPpq = std::ceil(ppqPos / intervalBeats) * intervalBeats;
-                }
-                int guard = 0;
-                while (nextPpq < ppqPos + blockSpanPpq && guard++ < 32)
-                {
-                    double deltaPpq = nextPpq - ppqPos;
-                    int sampleOff = juce::jlimit(0, numSamples - 1, (int) (deltaPpq * samplesPerPpq));
-                    // swing on odd steps
-                    if ((arpStepIndex % 2) == 1)
-                        sampleOff = juce::jlimit(0, numSamples - 1,
-                            sampleOff + (int) (swingFrac * intervalBeats * samplesPerPpq * 0.5));
+                const double blockEndPpq = ppqPos + numSamples / samplesPerBeat;
+                // first run, loop/jump backwards, or a stale schedule far behind: snap to the grid
+                if (nextPpq < 0.0 || nextPpq < ppqPos - intervalBeats * 0.5
+                    || nextPpq > blockEndPpq + intervalBeats)
+                    nextPpq = std::ceil(ppqPos / intervalBeats - 1.0e-9) * intervalBeats;
 
-                    if (arpCurrentNote >= 0)
-                        noteOffOut(out, sampleOff, arpCurrentNote, arpCurrentChannel);
-                    int n = pickArpNote();
-                    if (n >= 0)
-                    {
-                        noteOnOut(out, sampleOff, n, arpCurrentChannel, arpLastVel);
-                        arpCurrentNote = n;
-                        // schedule internal gate-off (approx within same block if short)
-                        double tickSamples = intervalBeats * samplesPerPpq;
-                        int offAt = sampleOff + (int) (tickSamples * gateFrac);
-                        if (offAt < numSamples)
-                        {
-                            // keep sounding until next tick; store pending cut via next tick's note-off.
-                            // For gates < 100% with long intervals, cut early:
-                            if (gateFrac < 0.98f)
-                            {
-                                // emit note-off early but keep arpCurrentNote so next tick is clean;
-                                // simplest: emit the off now-scheduled and mark still sounding
-                                // (host will treat extra note-off at next tick harmlessly)
-                                juce::MidiBuffer cut;
-                                cut.addEvent(juce::MidiMessage::noteOff(arpCurrentChannel, n), offAt);
-                                // merge: shift into out (out already has events; add with offset)
-                                for (auto m : cut) out.addEvent(m.getMessage(), m.samplePosition);
-                            }
-                        }
-                    }
-                    ++arpStepIndex;
+                while (guard++ < 64)
+                {
+                    double swing = swingDelayBeats();
+                    double at = nextPpq + swing;
+                    if (at >= blockEndPpq) break;
+                    int sampleOff = juce::jlimit(0, numSamples - 1, (int) ((at - ppqPos) * samplesPerBeat));
+                    fireStep(sampleOff, arpCurrentChannel, (intervalBeats - swing) * samplesPerBeat);
                     nextPpq += intervalBeats;
                 }
             }
-            else if (! playing)
+            else
             {
                 // Free-run on the last DAW tempo while the transport is stopped.
-                double tickSamples = 60.0 / freeBpm * intervalBeats * currentSampleRate;
-                int guard = 0;
-                if (nextPpq < -0.5 && samplesToNextTick <= 0.0 && ! arpImmediatePending)
+                if (samplesToNextTick < 0.0) samplesToNextTick = 0.0;
+                while (guard++ < 64)
                 {
-                    // pool became active with no triggering note in this block:
-                    // fire immediately at block start
-                    if (arpCurrentNote >= 0) noteOffOut(out, 0, arpCurrentNote, arpCurrentChannel);
-                    int n = pickArpNote();
-                    if (n >= 0) { noteOnOut(out, 0, n, arpCurrentChannel, arpLastVel); arpCurrentNote = n; }
-                    ++arpStepIndex;
-                    samplesToNextTick = tickSamples;
-                    if ((arpStepIndex % 2) == 0) samplesToNextTick += swingFrac * tickSamples * 0.5;
-                    nextPpq = 0.0; // mark active
-                }
-                samplesToNextTick -= numSamples;
-                while (samplesToNextTick <= 0.0 && guard++ < 16)
-                {
-                    int sampleOff = juce::jlimit(0, numSamples - 1, numSamples + (int) samplesToNextTick);
-                    if ((arpStepIndex % 2) == 1)
-                        sampleOff = juce::jlimit(0, numSamples - 1, sampleOff + (int) (swingFrac * tickSamples * 0.5));
-                    if (arpCurrentNote >= 0) noteOffOut(out, sampleOff, arpCurrentNote, arpCurrentChannel);
-                    int n = pickArpNote();
-                    if (n >= 0) { noteOnOut(out, sampleOff, n, arpCurrentChannel, arpLastVel); arpCurrentNote = n; }
-                    ++arpStepIndex;
+                    double swing = swingDelayBeats() * samplesPerBeat;
+                    double at = samplesToNextTick + swing;
+                    if (at >= numSamples) break;
+                    fireStep(juce::jlimit(0, numSamples - 1, (int) at), arpCurrentChannel, tickSamples - swing);
                     samplesToNextTick += tickSamples;
                 }
+                samplesToNextTick -= numSamples;
+            }
+
+            // gate-off due in this block, or carry it into the next one
+            if (gateOffIn >= 0 && arpCurrentNote >= 0)
+            {
+                if (gateOffIn < numSamples)
+                {
+                    noteOffOut(out, gateOffIn, arpCurrentNote, arpCurrentChannel);
+                    arpCurrentNote = -1;
+                    gateOffIn = -1;
+                }
+                else gateOffIn -= numSamples;
             }
         }
         else
@@ -952,9 +948,25 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
                 noteOffOut(out, 0, arpCurrentNote, arpCurrentChannel);
                 arpCurrentNote = -1;
             }
+            gateOffIn = -1;
             nextPpq = -1.0;
         }
-        activeVoices.store((int) voices.size() + (arpCurrentNote >= 0 ? 1 : 0));
+
+        // strummed chord notes that are due within this block
+        const auto blockEnd = sampleClock + numSamples;
+        for (auto it = pendingOns.begin(); it != pendingOns.end();)
+        {
+            if (it->time < blockEnd)
+            {
+                voiceNoteOn(out, (int) juce::jmax((juce::int64) 0, it->time - sampleClock),
+                            it->note, it->channel, it->vel);
+                it = pendingOns.erase(it);
+            }
+            else ++it;
+        }
+        sampleClock = blockEnd;
+
+        activeVoices.store((int) voices.size() + (arpOn && arpCurrentNote >= 0 ? 1 : 0));
     }
 
     midi.swapWith(out);

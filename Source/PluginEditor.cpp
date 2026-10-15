@@ -252,7 +252,8 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     snapA = std::make_unique<AttachC>(proc.apvts, "snap", snapBox);
     addAndMakeVisible(snapBox);
 
-    scaleA = std::make_unique<AttachC>(proc.apvts, "scale", scaleBox);
+    // No ComboBoxAttachment here: the box lists factory scales, then user
+    // scales, then Custom, so item indices don't match the parameter's choices.
     scaleBox.onChange = [this]
     {
         juce::String sel = scaleBox.getText();
@@ -279,7 +280,12 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
         }
         if (idx >= 0)
             if (auto* par = proc.apvts.getParameter("scale"))
+            {
+                par->beginChangeGesture();
                 par->setValueNotifyingHost(par->convertTo0to1(idx));
+                par->endChangeGesture();
+            }
+        lastScaleParam = (int) proc.apvts.getRawParameterValue("scale")->load();
         refreshChordSlots();
         refreshPcButtons();
         refreshEnabledStates();
@@ -442,7 +448,15 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     mkLabel(swingLabel, "Swing", true); addAndMakeVisible(swingLabel);
     mkLabel(gateLabel, "Gate", true);   addAndMakeVisible(gateLabel);
 
-    statusLabel.setJustificationType(juce::Justification::centred);
+    statusLabel.setJustificationType(juce::Justification::centredRight);
+    statusLabel.setBorderSize(juce::BorderSize<int>(0));
+
+    // titles sit flush with the content column's left edge
+    for (auto* l : { &titleLabel, &subtitleLabel, &scaleTitle, &chordTitle, &arpTitle, &customChordLabel })
+    {
+        l->setJustificationType(juce::Justification::centredLeft);
+        l->setBorderSize(juce::BorderSize<int>(0));
+    }
     statusLabel.setFont(juce::Font(juce::FontOptions(12.0f)));
     addAndMakeVisible(statusLabel);
 
@@ -486,23 +500,54 @@ void MidiNoteModifierEditor::showValueEntry(Knob* knob)
 void MidiNoteModifierEditor::refreshScaleBox()
 {
     auto names = proc.getAllScaleNames();
+    juce::String prevSel = scaleBox.getText();
     scaleBox.clear(juce::dontSendNotification);
     int id = 1;
     for (auto& n : names) scaleBox.addItem(n, id++);
+    // keep a selected user scale if it is still listed
+    for (int i = 0; i < scaleBox.getNumItems(); ++i)
+        if (prevSel.isNotEmpty() && scaleBox.getItemText(i) == prevSel)
+            scaleBox.setSelectedItemIndex(i, juce::dontSendNotification);
+    lastScaleParam = -1;
+    syncScaleBoxSelection();
+}
+
+// Mirror the "scale" parameter in the box (host automation, state recall,
+// pill/piano edits). A selected user scale stays shown while the Custom
+// pattern still matches it.
+void MidiNoteModifierEditor::syncScaleBoxSelection()
+{
     int scaleIdx = (int) proc.apvts.getRawParameterValue("scale")->load();
-    juce::String cur;
     auto& facts = Scales::factoryScales();
-    if (scaleIdx >= 0 && scaleIdx < (int) facts.size()) cur = facts[(size_t) scaleIdx].name;
-    else cur = "Custom";
-    if (cur == "Custom")
-        scaleBox.setSelectedItemIndex(scaleBox.getNumItems() - 1, juce::dontSendNotification);
-    else
+    juce::String want = "Custom";
+    if (scaleIdx >= 0 && scaleIdx < (int) facts.size()) want = facts[(size_t) scaleIdx].name;
+
+    if (scaleIdx == Scales::customIndex())
+    {
+        juce::String pattern;
+        for (int i = 0; i < 12; ++i)
+            pattern += proc.apvts.getRawParameterValue("pc" + juce::String(i))->load() > 0.5f ? "1" : "0";
+        auto user = proc.apvts.state.getChildWithName("USER_SCALES");
+        juce::String sel = scaleBox.getText();
+        for (int i = 0; i < user.getNumChildren(); ++i)
+            if (user.getChild(i).getProperty("name").toString() == sel
+                && user.getChild(i).getProperty("pattern").toString() == pattern)
+                want = sel;
+    }
+
+    if (scaleBox.getText() != want)
         for (int i = 0; i < scaleBox.getNumItems(); ++i)
-            if (scaleBox.getItemText(i) == cur)
+            if (scaleBox.getItemText(i) == want)
             {
                 scaleBox.setSelectedItemIndex(i, juce::dontSendNotification);
                 break;
             }
+
+    if (scaleIdx != lastScaleParam)
+    {
+        lastScaleParam = scaleIdx;
+        refreshChordSlots();
+    }
 }
 
 void MidiNoteModifierEditor::refreshPcButtons()
@@ -620,6 +665,7 @@ void MidiNoteModifierEditor::timerCallback()
 
     refreshEnabledStates();
     refreshPcButtons();
+    syncScaleBoxSelection();
     piano.repaint();
 }
 
@@ -655,7 +701,8 @@ void MidiNoteModifierEditor::resized()
 
     // header
     titleLabel.setBounds(M, 10, 280, 26);
-    subtitleLabel.setBounds(M, 34, 280, 16);
+    subtitleLabel.setBounds(M, 36, 280, 16);
+    const int toggleX = M + 120; // section on/off toggles share one column
     panicButton.setBounds(W - 112, 14, 84, 32);
     transportLabel.setBounds(W - 334, 14, 210, 32);
     themeBox.setBounds(W - 492, 14, 150, 32);
@@ -669,11 +716,11 @@ void MidiNoteModifierEditor::resized()
     chordPanelRect = { 12, scaleBottom + kGap, W - 24, kChordH };
     arpPanelRect = { 12, scaleBottom + kGap + kChordH + kGap, W - 24, kArpH };
     int y = kChromeTop + 10;
-    scaleTitle.setBounds(M, y, 80, 20);
-    lockButton.setBounds(M + 90, y - 2, 125, 26);
+    scaleTitle.setBounds(M, y, 110, 22);
+    lockButton.setBounds(toggleX, y - 2, 95, 26);
     int comboY = y - 2;
     int snapW = 100, rootW = 76;
-    int rootLblX = M + 90 + 125 + 8;
+    int rootLblX = toggleX + 95 + 8;
     int scaleLblX = rootLblX + 44 + rootW + 8;
     int snapX = R - snapW; // snapBox starts here
     rootLabel.setBounds(rootLblX, y, 44, 22);  rootBox.setBounds(rootLblX + 44, comboY, rootW, 26);
@@ -701,8 +748,8 @@ void MidiNoteModifierEditor::resized()
 
     // ---- chord panel ----
     y = chordPanelRect.getY() + 10;
-    chordTitle.setBounds(M, y, 90, 20);
-    chordOn.setBounds(M + 100, y - 2, 90, 26);
+    chordTitle.setBounds(M, y, 110, 22);
+    chordOn.setBounds(toggleX, y - 2, 90, 26);
     diatonicButton.setBounds(R - 140, y - 2, 140, 26);
 
     y += 32;
@@ -724,26 +771,30 @@ void MidiNoteModifierEditor::resized()
     strumKnob.setBounds(R - knobBox, y + 14, knobBox, knobBox);
 
     y += 14 + knobBox + 8;
-    customChordLabel.setBounds(M, y + 4, 60, 22);
+    customChordLabel.setBounds(M, y + 2, 60, 26);
     customSlotBox.setBounds(M + 64, y + 2, 86, 26);
-    int delW = 70, saveW2 = 70;
-    int ivW = juce::jmax(44, juce::jmin(58, (CW - 64 - 86 - 150 - delW - saveW2 - 6 * 8 - 16) / 6));
+    // the row spans the full content width: interval boxes and the name field share the slack
+    int delW = CW < 880 ? 64 : 70, saveW2 = delW;
+    const int nIv = MidiNoteModifierProcessor::kMaxChordNotes;
+    int flex = CW - 64 - 86 - 8 - 8 - nIv * 6 - saveW2 - 6 - delW;
+    int ivW = juce::jlimit(62, 90, (flex - 150) / nIv);
+    int nameW = juce::jmax(90, flex - nIv * ivW);
     int cx = M + 64 + 86 + 8;
-    customChordName.setBounds(cx, y + 2, 150, 26);
-    cx += 150 + 8;
+    customChordName.setBounds(cx, y + 2, nameW, 26);
+    cx += nameW + 8;
     for (int k = 0; k < MidiNoteModifierProcessor::kMaxChordNotes; ++k)
     {
         customIvBoxes[k].setBounds(cx, y + 2, ivW, 26);
         cx += ivW + 6;
     }
-    customChordSave.setBounds(cx, y + 2, saveW2, 26);
-    customChordDelete.setBounds(cx + saveW2 + 6, y + 2, delW, 26);
+    customChordDelete.setBounds(R - delW, y + 2, delW, 26);
+    customChordSave.setBounds(R - delW - 6 - saveW2, y + 2, saveW2, 26);
 
     // ---- arp panel ----
     y = arpPanelRect.getY() + 10;
-    arpTitle.setBounds(M, y, 150, 20);
-    arpOn.setBounds(M + 160, y - 2, 90, 26);
-    arpLatch.setBounds(M + 250, y - 2, 110, 26);
+    arpTitle.setBounds(M, y, 115, 22);
+    arpOn.setBounds(toggleX, y - 2, 90, 26);
+    arpLatch.setBounds(toggleX + 90 + 18, y - 2, 110, 26);
 
     y += 34;
     int grp = 120, grpGap = 18;
@@ -757,7 +808,7 @@ void MidiNoteModifierEditor::resized()
     gateLabel.setBounds(kx + knobBox + grpGap, y, knobBox, 14);
     gateKnob.setBounds(kx + knobBox + grpGap, y + 14, knobBox, knobBox);
 
-    statusLabel.setBounds(W - 358, getHeight() - 28, 334, 20);
+    statusLabel.setBounds(R - 334, getHeight() - 28, 334, 20);
 }
 
 juce::AudioProcessorEditor* MidiNoteModifierProcessor::createEditor()
