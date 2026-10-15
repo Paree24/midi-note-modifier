@@ -79,7 +79,7 @@ private:
     juce::ToggleButton whiteKeysButton { "White Keys" };
     juce::Label rootLabel { {}, "Root" }, scaleLabel { {}, "Scale" }, snapLabel { {}, "Snap" };
     juce::ComboBox rootBox, scaleBox, snapBox;
-    std::unique_ptr<AttachC> rootA, scaleA, snapA;
+    std::unique_ptr<AttachC> rootA, snapA; // scale box is synced by hand (its items != param choices)
     std::unique_ptr<AttachT> lockA, whiteKeysA;
 
     juce::ToggleButton editToggle { "Edit" };
@@ -135,6 +135,8 @@ private:
     juce::Rectangle<int> scalePanelRect, chordPanelRect, arpPanelRect;
 
     void refreshScaleBox();
+    void syncScaleBoxSelection();
+    int lastScaleParam = -1;
     void refreshChordSlots();
     void refreshPcButtons();
     void refreshChordTypeNames();
