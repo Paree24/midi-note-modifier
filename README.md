@@ -129,6 +129,11 @@ Note: `scale`/`arpRate`/`chd` parameter layouts changed between versions, so
 automation and state from older builds of this plugin will not map 1:1
 (Custom scale still resolves).
 
+## License
+
+This project is licensed under the GNU General Public License v3.0 or later —
+see [LICENSE](LICENSE) for details.
+
 ## Disclaimer
 
 Disclaimer: this project is vibe-coded for personal use. It is provided
