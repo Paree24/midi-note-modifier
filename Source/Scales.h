@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <initializer_list>
 
 // Scale library: a common set of controller scales
 // (pad_pages pitch-class sets, all rooted at C there, verified by script).
@@ -223,24 +224,33 @@ namespace Scales
     // -1 = Auto (diatonic, or power for powerChords scales), 0 = Single/Off,
     // 1 Major, 2 Minor, 3 Dim, 4 Aug, 5 Sus2, 6 Sus4, 7 Power(1-5),
     // 8 Dom7(1-3-5-b7), 9 Maj7, 10 Min7, 11 Power+Oct(1-5-8), 12 Add9
-    inline std::vector<int> forcedChordIntervals(int type)
+    // Allocation-free form for the audio thread: writes up to 4 intervals, returns the count.
+    inline int forcedChordIntervals(int type, int* out)
     {
+        auto put = [out](std::initializer_list<int> l) { int n = 0; for (int v : l) out[n++] = v; return n; };
         switch (type)
         {
-            case 1:  return { 0, 4, 7 };
-            case 2:  return { 0, 3, 7 };
-            case 3:  return { 0, 3, 6 };
-            case 4:  return { 0, 4, 8 };
-            case 5:  return { 0, 2, 7 };
-            case 6:  return { 0, 5, 7 };
-            case 7:  return { 0, 7 };
-            case 8:  return { 0, 4, 7, 10 };
-            case 9:  return { 0, 4, 7, 11 };
-            case 10: return { 0, 3, 7, 10 };
-            case 11: return { 0, 7, 12 };
-            case 12: return { 0, 4, 7, 14 };
-            default: return { 0 };
+            case 1:  return put({ 0, 4, 7 });
+            case 2:  return put({ 0, 3, 7 });
+            case 3:  return put({ 0, 3, 6 });
+            case 4:  return put({ 0, 4, 8 });
+            case 5:  return put({ 0, 2, 7 });
+            case 6:  return put({ 0, 5, 7 });
+            case 7:  return put({ 0, 7 });
+            case 8:  return put({ 0, 4, 7, 10 });
+            case 9:  return put({ 0, 4, 7, 11 });
+            case 10: return put({ 0, 3, 7, 10 });
+            case 11: return put({ 0, 7, 12 });
+            case 12: return put({ 0, 4, 7, 14 });
+            default: return put({ 0 });
         }
+    }
+
+    inline std::vector<int> forcedChordIntervals(int type)
+    {
+        int b[4];
+        int n = forcedChordIntervals(type, b);
+        return { b, b + n };
     }
 
     inline std::string chordTypeName(int type)
@@ -266,9 +276,10 @@ namespace Scales
     }
 
     // Diatonic triad by stacking thirds within the scale.
-    inline std::vector<int> diatonicTriad(int degree, const std::vector<int>& intervals)
+    // Allocation-free form: writes 1 or 3 intervals, returns the count.
+    inline int diatonicTriad(int degree, const std::vector<int>& intervals, int* out)
     {
-        if (intervals.empty()) return { 0 };
+        if (intervals.empty()) { out[0] = 0; return 1; }
         int n = (int) intervals.size();
         auto height = [&](int degOffset) {
             int idx = (degree + degOffset) % n;
@@ -276,6 +287,14 @@ namespace Scales
             return intervals[(size_t) idx] + 12 * oct;
         };
         int r = height(0);
-        return { 0, height(2) - r, height(4) - r };
+        out[0] = 0; out[1] = height(2) - r; out[2] = height(4) - r;
+        return 3;
+    }
+
+    inline std::vector<int> diatonicTriad(int degree, const std::vector<int>& intervals)
+    {
+        int b[3];
+        int n = diatonicTriad(degree, intervals, b);
+        return { b, b + n };
     }
 }

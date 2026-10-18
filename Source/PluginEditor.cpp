@@ -37,132 +37,135 @@ private:
     juce::TextEditor ed;
 };
 
-// ============ PianoView (single octave, opaque keys) ============
+// ============ PianoView (single octave C4..C5, opaque keys) ============
 
-PianoView::PianoView(MidiNoteModifierProcessor& proc_, std::function<void()> onChanged_)
-    : p(proc_), onChanged(std::move(onChanged_)) {}
+PianoView::PianoView(MidiNoteModifierProcessor& proc_, const Theme& theme_, std::function<void()> onChanged_)
+    : p(proc_), theme(theme_), onChanged(std::move(onChanged_)) {}
 
-bool PianoView::isBlack(int n) const
+bool PianoView::isBlack(int n)
 {
     int pc = ((n % 12) + 12) % 12;
     return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
 }
 
-int PianoView::noteAtPoint(juce::Point<int> pt) const
+void PianoView::resized()
 {
-    auto bounds = getLocalBounds().toFloat();
-    int nWhite = 0;
-    for (int i = 0; i < kKeys; ++i) if (! isBlack(kStart + i)) ++nWhite;
-    float wWhite = bounds.getWidth() / (float) nWhite;
-    float h = bounds.getHeight();
-    float blackH = h * 0.62f;
-    float blackW = wWhite * 0.6f;
-
-    if (pt.y < blackH)
-    {
-        int wi = 0;
-        for (int i = 0; i < kKeys; ++i)
-        {
-            int n = kStart + i;
-            if (! isBlack(n)) { ++wi; continue; }
-            float x = wi * wWhite - blackW * 0.5f;
-            if (pt.x >= x && pt.x < x + blackW) return n;
-        }
-    }
-    int wi = 0;
-    for (int i = 0; i < kKeys; ++i)
-    {
-        int n = kStart + i;
-        if (isBlack(n)) continue;
-        float x = wi * wWhite;
-        if (pt.x >= x && pt.x < x + wWhite) return n;
-        ++wi;
-    }
-    return -1;
+    rebuildLayout(); // one octave: the scale's pitch classes, C4..C5
 }
 
-juce::Rectangle<float> PianoView::rectForKey(int note, bool black, float wWhite, float h) const
+void PianoView::rebuildLayout()
 {
+    hiKey = loKey + 12 * numOctaves;
+    whiteKeys.clear();
+    blackKeys.clear();
+    for (int m = loKey; m <= hiKey; ++m)
+        if (! isBlack(m)) whiteKeys.push_back(m);
+    float W = (float) juce::jmax(1, getWidth());
+    whiteW = whiteKeys.empty() ? W : W / (float) whiteKeys.size();
+    float bw = whiteW * 0.6f;
     int wi = 0;
-    for (int n = kStart; n < note; ++n) if (! isBlack(n)) ++wi;
-    if (! black)
-        return { wi * wWhite + 1.5f, 0.0f, wWhite - 3.0f, h };
-    float blackW = wWhite * 0.6f;
-    return { wi * wWhite - blackW * 0.5f, 0.0f, blackW, h * 0.62f };
+    for (int m = loKey; m <= hiKey; ++m)
+    {
+        if (! isBlack(m)) { ++wi; continue; }
+        float cx = wi * whiteW;
+        blackKeys.push_back({ m, cx - bw * 0.5f, cx + bw * 0.5f });
+    }
+}
+
+int PianoView::noteAtPoint(juce::Point<float> pt) const
+{
+    if (whiteKeys.empty() || ! getLocalBounds().toFloat().contains(pt)) return -1;
+    float blackH = (float) getHeight() * 0.62f;
+    if (pt.y < blackH)
+        for (auto& b : blackKeys)
+            if (pt.x >= b.x0 && pt.x < b.x1) return b.midi;
+    int wi = juce::jlimit(0, (int) whiteKeys.size() - 1, (int) (pt.x / whiteW));
+    return whiteKeys[(size_t) wi];
 }
 
 void PianoView::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
-    int nWhite = 0;
-    for (int i = 0; i < kKeys; ++i) if (! isBlack(kStart + i)) ++nWhite;
-    float wWhite = bounds.getWidth() / (float) nWhite;
-    float h = bounds.getHeight();
+    float h = (float) getHeight();
+    float blackH = h * 0.62f;
 
     auto set = p.currentPcSet();
     int lastIn = p.lastInputNote.load();
     int lastSnapped = p.lastSnappedNote.load();
     auto names = Scales::noteNames();
+    const bool wide = whiteW > 30.0f; // room for every note name
 
-    for (int i = 0; i < kKeys; ++i)
+    for (size_t i = 0; i < whiteKeys.size(); ++i)
     {
-        int n = kStart + i;
-        if (isBlack(n)) continue;
-        auto r = rectForKey(n, false, wWhite, h);
+        int n = whiteKeys[i];
+        juce::Rectangle<float> r { (float) i * whiteW + 1.5f, 0.0f, whiteW - 3.0f, h };
         int pc = ((n % 12) + 12) % 12;
         bool inScale = set[(size_t) pc];
         bool active = (n == lastSnapped || n == lastIn || n == heldUiNote);
-        juce::Colour fill = inScale ? Theme::light() : juce::Colour(0xFF3A3A42);
+        juce::Colour fill = inScale ? theme.light() : juce::Colour(0xFF3A3A42);
         if (active) fill = juce::Colours::white;
         if (active)
         {
-            g.setColour(Theme::mid().withAlpha(0.3f));
+            g.setColour(theme.mid().withAlpha(0.3f));
             g.fillRoundedRectangle(r.expanded(3.0f), 8.0f);
         }
         g.setColour(fill);
         g.fillRoundedRectangle(r, 6.0f);
         g.setColour(juce::Colour(0xFF1E1E23));
         g.drawRoundedRectangle(r, 6.0f, 1.5f);
-        g.setColour(inScale ? juce::Colour(0xFF55555F) : juce::Colour(0xFF8E8E9A));
-        g.setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
-        g.drawText(names[(size_t) pc],
-                   juce::Rectangle<float>(r.getX(), r.getBottom() - 26, r.getWidth(), 20),
-                   juce::Justification::centred, false);
+        if (wide || pc == 0)
+        {
+            g.setColour(inScale ? juce::Colour(0xFF55555F) : juce::Colour(0xFF8E8E9A));
+            g.setFont(juce::Font(juce::FontOptions(wide ? 13.0f : 11.0f, juce::Font::bold)));
+            juce::String label = names[(size_t) pc];
+            if (pc == 0) label << (n / 12 - 1); // octave on every C
+            g.drawText(label, juce::Rectangle<float>(r.getX(), r.getBottom() - 26, r.getWidth(), 20),
+                       juce::Justification::centred, false);
+        }
         if (inScale && ! active)
         {
-            g.setColour(Theme::dark().withAlpha(0.7f));
+            g.setColour(theme.dark().withAlpha(0.7f));
             g.fillEllipse(r.getCentreX() - 3.0f, r.getBottom() - 44.0f, 6.0f, 6.0f);
         }
     }
-    for (int i = 0; i < kKeys; ++i)
+    for (auto& b : blackKeys)
     {
-        int n = kStart + i;
-        if (! isBlack(n)) continue;
-        auto r = rectForKey(n, true, wWhite, h);
+        int n = b.midi;
+        juce::Rectangle<float> r { b.x0, 0.0f, b.x1 - b.x0, blackH };
         int pc = ((n % 12) + 12) % 12;
         bool inScale = set[(size_t) pc];
         bool active = (n == lastSnapped || n == lastIn || n == heldUiNote);
-        juce::Colour fill = inScale ? Theme::mid() : juce::Colour(0xFF1E1E23);
-        if (active) fill = Theme::light();
+        juce::Colour fill = inScale ? theme.mid() : juce::Colour(0xFF1E1E23);
+        if (active) fill = theme.light();
         if (active)
         {
-            g.setColour(Theme::mid().withAlpha(0.35f));
+            g.setColour(theme.mid().withAlpha(0.35f));
             g.fillRoundedRectangle(r.expanded(3.0f), 8.0f);
         }
         g.setColour(fill);
         g.fillRoundedRectangle(r, 6.0f);
-        g.setColour(inScale ? Theme::light() : juce::Colour(0xFF45454E));
+        g.setColour(inScale ? theme.light() : juce::Colour(0xFF45454E));
         g.drawRoundedRectangle(r, 6.0f, 1.2f);
     }
 }
 
+void PianoView::auditionAt(juce::Point<float> pt)
+{
+    int n = noteAtPoint(pt);
+    if (n == heldUiNote) return;
+    if (heldUiNote >= 0) p.queueAuditionNote(false, heldUiNote, 0);
+    heldUiNote = n;
+    if (heldUiNote >= 0) p.queueAuditionNote(true, heldUiNote, 100);
+    repaint();
+}
+
 void PianoView::mouseDown(const juce::MouseEvent& e)
 {
-    int n = noteAtPoint(e.getPosition());
+    int n = noteAtPoint(e.position);
     if (n < 0) return;
     bool toggle = editMode || e.mods.isRightButtonDown() || e.mods.isShiftDown();
     if (toggle)
     {
+        SnapshotUndo::Transaction undoStep(p.undoHistory);
         int pc = ((n % 12) + 12) % 12;
         juce::String id = "pc" + juce::String(pc);
         if (auto* par = p.apvts.getParameter(id))
@@ -175,12 +178,13 @@ void PianoView::mouseDown(const juce::MouseEvent& e)
         if (onChanged) onChanged();
         repaint();
     }
-    else
-    {
-        heldUiNote = n;
-        p.queueAuditionNote(true, n, 100);
-        repaint();
-    }
+    else auditionAt(e.position);
+}
+
+void PianoView::mouseDrag(const juce::MouseEvent& e)
+{
+    // glide across keys while auditioning (not in edit/toggle mode)
+    if (heldUiNote >= 0) auditionAt(e.position);
 }
 
 void PianoView::mouseUp(const juce::MouseEvent&)
@@ -196,13 +200,14 @@ void PianoView::mouseUp(const juce::MouseEvent&)
 // ============ Editor ============
 
 MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
-    : juce::AudioProcessorEditor(proc_), proc(proc_), piano(proc_, [this]
+    : juce::AudioProcessorEditor(proc_), proc(proc_), piano(proc_, lnf.theme, [this]
       {
           refreshPcButtons();
           refreshScaleBox();
           refreshChordSlots();
       })
 {
+    lnf.setTheme((int) proc.apvts.getRawParameterValue("theme")->load());
     setLookAndFeel(&lnf);
     setSize(960, 800);
     setResizable(true, true);
@@ -211,8 +216,14 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     mkLabel(titleLabel, "Midi Note Modifier", false);
     titleLabel.setFont(juce::Font(juce::FontOptions(20.0f, juce::Font::bold)));
     addAndMakeVisible(titleLabel);
-    mkLabel(subtitleLabel, "Scale | Chords | Arp", true);
-    addAndMakeVisible(subtitleLabel);
+    presetButton.setTooltip("Setups: whole scale + chords + arp presets (factory and your own)");
+    presetButton.onClick = [this]
+    {
+        presetBrowser.setVisible(! presetBrowser.isVisible());
+        if (presetBrowser.isVisible()) presetBrowser.toFront(false);
+    };
+    presetButton.setComponentID("presetButton");
+    addAndMakeVisible(presetButton);
 
     transportLabel.setJustificationType(juce::Justification::centred);
     transportLabel.setFont(juce::Font(juce::FontOptions(13.0f, juce::Font::bold)));
@@ -231,6 +242,12 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     panicButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicButton.onClick = [this] { proc.panic(); };
     addAndMakeVisible(panicButton);
+    undoButton.setTooltip("Undo the last change (Ctrl/Cmd+Z)");
+    redoButton.setTooltip("Redo what Undo took back (Ctrl/Cmd+Shift+Z)");
+    undoButton.onClick = [this] { proc.undo(); };
+    redoButton.onClick = [this] { proc.redo(); };
+    addAndMakeVisible(undoButton);
+    addAndMakeVisible(redoButton);
 
     // ---- scale ----
     mkLabel(scaleTitle, "Scale", false);
@@ -258,6 +275,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     {
         juce::String sel = scaleBox.getText();
         if (sel.isEmpty()) return;
+        SnapshotUndo::Transaction undoStep(proc.undoHistory);
         auto& facts = Scales::factoryScales();
         int idx = -1;
         for (size_t i = 0; i < facts.size(); ++i)
@@ -301,6 +319,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
         {
             // pills always show the current scale: adopting a factory scale
             // copies it into the Custom pattern first, then toggles this pc
+            SnapshotUndo::Transaction undoStep(proc.undoHistory);
             int scaleIdx = (int) proc.apvts.getRawParameterValue("scale")->load();
             if (scaleIdx != Scales::customIndex())
             {
@@ -332,11 +351,37 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     {
         juce::String n = presetName.getText().trim();
         if (n.isEmpty()) return;
-        proc.saveCustomScale(n);
+        if (MidiNoteModifierProcessor::isReservedScaleName(n))
+        {
+            presetName.clear();
+            presetName.setTextToShowWhenEmpty("\"" + n + "\" is a factory scale, pick another name",
+                                              juce::Colour(0xFFE5484D));
+            return;
+        }
+        {
+            SnapshotUndo::Transaction undoStep(proc.undoHistory);
+            proc.saveCustomScale(n);
+        }
         refreshScaleBox();
         presetName.clear();
+        presetName.setTextToShowWhenEmpty("Custom Scale Name...", juce::Colour(0xFF8E8E9A));
     };
     addAndMakeVisible(saveButton);
+    deleteScaleButton.setTooltip("Delete the selected user scale");
+    deleteScaleButton.onClick = [this]
+    {
+        juce::String sel = scaleBox.getText();
+        if (! proc.isUserScale(sel)) return;
+        {
+            SnapshotUndo::Transaction undoStep(proc.undoHistory);
+            proc.deleteCustomScale(sel);
+        }
+        // the pattern stays loaded as Custom, so nothing currently playing changes
+        scaleBox.setText("Custom", juce::dontSendNotification);
+        refreshScaleBox();
+        refreshEnabledStates();
+    };
+    addAndMakeVisible(deleteScaleButton);
     mkLabel(pianoHint, "Click Keys To Audition  |  Shift-Click A Key (Or Edit Mode) To Toggle It In The Scale", true);
     addAndMakeVisible(pianoHint);
     addAndMakeVisible(piano);
@@ -374,7 +419,11 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     strumA = std::make_unique<AttachS>(proc.apvts, "strum", strumKnob);
     strumKnob.onDoubleClickEntry = [this](Knob* k) { showValueEntry(k); };
     addAndMakeVisible(strumKnob);
-    diatonicButton.onClick = [this] { proc.resetDiatonicChords(); refreshChordSlots(); };
+    diatonicButton.onClick = [this]
+    {
+        { SnapshotUndo::Transaction undoStep(proc.undoHistory); proc.resetDiatonicChords(); }
+        refreshChordSlots();
+    };
     addAndMakeVisible(diatonicButton);
 
     // ---- custom chord-type designer ----
@@ -406,14 +455,20 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
             int v = customIvBoxes[k].getSelectedId() - 2; // -1 = unused
             if (v >= 0) ivs.push_back(v);
         }
-        proc.saveChordType(chordEditSlot, customChordName.getText(), ivs);
+        {
+            SnapshotUndo::Transaction undoStep(proc.undoHistory);
+            proc.saveChordType(chordEditSlot, customChordName.getText(), ivs);
+        }
         refreshCustomDesigner();
         refreshChordTypeNames();
     };
     addAndMakeVisible(customChordSave);
     customChordDelete.onClick = [this]
     {
-        proc.resetChordType(chordEditSlot);
+        {
+            SnapshotUndo::Transaction undoStep(proc.undoHistory);
+            proc.resetChordType(chordEditSlot);
+        }
         refreshCustomDesigner();
         refreshChordTypeNames();
     };
@@ -452,7 +507,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     statusLabel.setBorderSize(juce::BorderSize<int>(0));
 
     // titles sit flush with the content column's left edge
-    for (auto* l : { &titleLabel, &subtitleLabel, &scaleTitle, &chordTitle, &arpTitle, &customChordLabel })
+    for (auto* l : { &titleLabel, &scaleTitle, &chordTitle, &arpTitle, &customChordLabel })
     {
         l->setJustificationType(juce::Justification::centredLeft);
         l->setBorderSize(juce::BorderSize<int>(0));
@@ -466,6 +521,10 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     refreshCustomDesigner();
     refreshChordTypeNames();
     refreshEnabledStates();
+    presetBrowser.onClose = [this] { presetBrowser.setVisible(false); };
+    addChildComponent(presetBrowser);
+    refreshPresetButton();
+    lastStateVersion = proc.stateVersion.load();
     startTimerHz(15);
 }
 
@@ -483,6 +542,7 @@ juce::Label* MidiNoteModifierEditor::mkLabel(juce::Label& l, const juce::String&
                 dim ? juce::Colour(0xFFA7A3B8) : juce::Colour(0xFFF2F0F5));
     return &l;
 }
+
 
 int MidiNoteModifierEditor::currentScaleLength()
 {
@@ -608,8 +668,29 @@ void MidiNoteModifierEditor::refreshCustomDesigner()
     }
 }
 
+// Host recalled a whole state: user scales, custom chord names and the
+// designer contents may all have changed under us.
+void MidiNoteModifierEditor::refreshPresetButton()
+{
+    auto n = proc.getSetupName();
+    presetButton.setButtonText(n.isEmpty() ? juce::String("Setups...") : "Setup: " + n);
+}
+
+void MidiNoteModifierEditor::refreshAfterStateChange()
+{
+    refreshPresetButton();
+    refreshScaleBox();
+    refreshChordSlots();
+    refreshPcButtons();
+    refreshChordTypeNames();
+    refreshCustomDesigner();
+    refreshEnabledStates();
+}
+
 void MidiNoteModifierEditor::refreshEnabledStates()
 {
+    deleteScaleButton.setEnabled(proc.isUserScale(scaleBox.getText()));
+
     bool ch = chordOn.getToggleState();
     for (int i = 0; i < 12; ++i)
     {
@@ -638,10 +719,28 @@ void MidiNoteModifierEditor::refreshEnabledStates()
     gateKnob.setEnabled(ar);  gateLabel.setEnabled(ar);
 }
 
+bool MidiNoteModifierEditor::keyPressed(const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0)) { proc.undo(); return true; }
+    if (key == juce::KeyPress('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0)
+        || key == juce::KeyPress('y', juce::ModifierKeys::commandModifier, 0)) { proc.redo(); return true; }
+    return false;
+}
+
 void MidiNoteModifierEditor::timerCallback()
 {
+    undoButton.setEnabled(proc.undoHistory.canUndo());
+    refreshPresetButton();
+    redoButton.setEnabled(proc.undoHistory.canRedo());
+    int sv = proc.stateVersion.load();
+    if (sv != lastStateVersion)
+    {
+        lastStateVersion = sv;
+        refreshAfterStateChange();
+    }
+
     int themeIdx = (int) proc.apvts.getRawParameterValue("theme")->load();
-    if (themeIdx != Theme::get())
+    if (themeIdx != lnf.theme.get())
     {
         lnf.setTheme(themeIdx);
         repaint();
@@ -653,7 +752,7 @@ void MidiNoteModifierEditor::timerCallback()
                                    : ("-  Stopped | " + juce::String(bpm, 1) + " BPM"),
                            juce::dontSendNotification);
     transportLabel.setColour(juce::Label::textColourId,
-                             playing ? Theme::light() : juce::Colour(0xFF8E8E9A));
+                             playing ? lnf.theme.light() : juce::Colour(0xFF8E8E9A));
 
     juce::String st = "Voices " + juce::String(proc.activeVoices.load());
     int li = proc.lastInputNote.load(), ls = proc.lastSnappedNote.load();
@@ -689,7 +788,7 @@ void MidiNoteModifierEditor::paint(juce::Graphics& g)
 static constexpr int kKnobBox = 44;
 static constexpr int kChordH = 10 + 26 + 6 + 26 + 14 + 8 + (14 + kKnobBox) + 8 + 26 + 10; // 208
 static constexpr int kArpH = 10 + 26 + 8 + (14 + kKnobBox) + 10;  // 128
-static constexpr int kScaleFixed = 10 + 26 + 8 + 26 + 8 + 26 + 8 + 16 + 6;                // 134
+static constexpr int kScaleFixed = 10 + 26 + 8 + 26 + 8 + 26 + 8 + 22 + 6;                // 140
 static constexpr int kChromeTop = 62, kGap = 8, kStatusH = 30;
 
 void MidiNoteModifierEditor::resized()
@@ -700,12 +799,15 @@ void MidiNoteModifierEditor::resized()
     const int CW = R - M; // content width
 
     // header
-    titleLabel.setBounds(M, 10, 280, 26);
-    subtitleLabel.setBounds(M, 36, 280, 16);
+    titleLabel.setBounds(M, 8, 280, 26);
+    presetButton.setBounds(M - 2, 36, 200, 22);
+    presetBrowser.setBounds(getLocalBounds());
     const int toggleX = M + 120; // section on/off toggles share one column
     panicButton.setBounds(W - 112, 14, 84, 32);
     transportLabel.setBounds(W - 334, 14, 210, 32);
     themeBox.setBounds(W - 492, 14, 150, 32);
+    redoButton.setBounds(W - 492 - 8 - 56, 17, 56, 26);
+    undoButton.setBounds(W - 492 - 8 - 56 - 4 - 56, 17, 56, 26);
 
     // ---- scale panel (keyboard takes remaining height) ----
     int keyboardH = getHeight() - (kChromeTop + kScaleFixed + 10 + kGap + kChordH + kGap + kArpH + kGap + kStatusH);
@@ -736,14 +838,15 @@ void MidiNoteModifierEditor::resized()
     editToggle.setBounds(R - editW, y - 2, editW, 28);
 
     y += 34;
-    int saveW = 80, wkW = 150;
+    int saveW = 80, delSW = 80, wkW = 150;
     whiteKeysButton.setBounds(M, y - 2, wkW, 26);
-    presetName.setBounds(M + wkW + 8, y, CW - wkW - 8 - saveW - 8, 26);
-    saveButton.setBounds(R - saveW, y, saveW, 26);
+    presetName.setBounds(M + wkW + 8, y, CW - wkW - 8 - saveW - 6 - delSW - 8, 26);
+    saveButton.setBounds(R - delSW - 6 - saveW, y, saveW, 26);
+    deleteScaleButton.setBounds(R - delSW, y, delSW, 26);
 
     y += 30;
-    pianoHint.setBounds(M, y, CW, 16);
-    y += 18;
+    pianoHint.setBounds(M, y + 3, CW, 16);
+    y += 24;
     piano.setBounds(M, y, CW, scaleBottom - 12 - y);
 
     // ---- chord panel ----

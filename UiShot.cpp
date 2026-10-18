@@ -1,5 +1,22 @@
 #include "Source/PluginProcessor.h"
 #include "Source/PluginEditor.h"
+#include "Source/SetupPresets.h"
+
+#include <atomic>
+#include <cstdlib>
+#include <new>
+
+// ---- allocation counter for the audio-thread check ----
+static std::atomic<bool> gCountAllocs { false };
+static std::atomic<long> gAllocs { 0 };
+void* operator new(std::size_t n)
+{
+    if (gCountAllocs.load(std::memory_order_relaxed)) gAllocs.fetch_add(1);
+    if (void* p = std::malloc(n == 0 ? 1 : n)) return p;
+    throw std::bad_alloc();
+}
+void operator delete(void* p) noexcept { std::free(p); }
+void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 
 #define CHECK(cond, label) \
     do { if (! (cond)) { printf("FAIL: %s\n", label); fails++; } \
@@ -59,6 +76,8 @@ int main()
     MidiNoteModifierProcessor proc;
     proc.prepareToPlay(44100.0, 512);
 
+    CHECK(Scales::factoryScales().size() == 65, "64 factory scales + Custom (README count)");
+
     // --- custom scale save/delete ---
     for (int i = 0; i < 12; ++i)
         proc.apvts.getParameter("pc" + juce::String(i))->setValueNotifyingHost(
@@ -67,6 +86,9 @@ int main()
     CHECK(proc.getAllScaleNames().contains("TestScale"), "scale preset listed");
     CHECK(proc.deleteCustomScale("TestScale"), "delete custom scale");
     CHECK(! proc.getAllScaleNames().contains("TestScale"), "scale preset gone");
+    CHECK(! proc.saveCustomScale("Major"), "factory scale name refused");
+    CHECK(! proc.saveCustomScale("custom"), "\"Custom\" name refused");
+    CHECK(proc.getAllScaleNames().size() == (int) Scales::factoryScales().size(), "no clashing user scale added");
 
     // --- custom chord type save/load/reset (G6 = Major 6th) ---
     CHECK(proc.saveChordType(0, "Major 6th", { 0, 4, 7, 9 }), "save chord type Major 6th");
@@ -80,9 +102,81 @@ int main()
         proc2.setStateInformation(mb.getData(), (int) mb.getSize());
         CHECK(proc2.customChordDisplayName(0) == "Major 6th", "chord type survives state round-trip");
         CHECK(proc2.getCustomChordIntervals(0) == std::vector<int>({ 0, 4, 7, 9 }), "chord ivs survive round-trip");
+        int v0 = proc2.stateVersion.load();
+        proc2.setStateInformation(mb.getData(), (int) mb.getSize());
+        CHECK(proc2.stateVersion.load() == v0 + 1, "state recall notifies the editor");
     }
     CHECK(proc.resetChordType(0), "reset chord type");
     CHECK(proc.customChordDisplayName(0) == "Custom 1", "chord type reset to default name");
+
+    // --- undo / redo: one step per gesture, snapshots for multi-part edits ---
+    {
+        MidiNoteModifierProcessor u;
+        auto* gate = u.apvts.getParameter("gate");
+        const float g0 = gate->getValue();
+        gate->beginChangeGesture(); gate->setValueNotifyingHost(0.2f); gate->setValueNotifyingHost(0.3f); gate->endChangeGesture();
+        CHECK(u.undoHistory.canUndo(), "knob gesture recorded as an undo step");
+        u.undo();
+        CHECK(std::abs(gate->getValue() - g0) < 1.0e-5f, "undo restores the knob");
+        u.redo();
+        CHECK(std::abs(gate->getValue() - 0.3f) < 1.0e-5f, "redo re-applies the knob");
+        gate->setValueNotifyingHost(0.5f); // automation (no gesture): not recorded
+        u.undo();
+        CHECK(! u.undoHistory.canUndo(), "automation is not an undo step");
+        {
+            SnapshotUndo::Transaction t(u.undoHistory);
+            u.saveCustomScale("UndoMe");
+        }
+        CHECK(u.isUserScale("UndoMe"), "user scale saved");
+        auto* theme = u.apvts.getParameter("theme");
+        theme->beginChangeGesture(); theme->setValueNotifyingHost(theme->convertTo0to1(3)); theme->endChangeGesture();
+        u.undo();
+        CHECK(! u.isUserScale("UndoMe"), "undo removes the saved user scale");
+        CHECK((int) u.apvts.getRawParameterValue("theme")->load() == 3, "theme is neither recorded nor reverted");
+        u.redo();
+        CHECK(u.isUserScale("UndoMe"), "redo brings it back");
+    }
+
+    // --- setup presets: factory + user, theme untouched, one undo step ---
+    {
+        auto dir = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("mnm_setup_test");
+        dir.deleteRecursively();
+        SetupPresets::setUserPresetDirForTest(dir);
+        MidiNoteModifierProcessor u;
+        auto raw = [&](const char* id) { return u.apvts.getRawParameterValue(id)->load(); };
+        auto* theme = u.apvts.getParameter("theme");
+        theme->setValueNotifyingHost(theme->convertTo0to1(2));
+        const auto& fac = SetupPresets::factory();
+        CHECK(fac.size() >= 8, "factory setups listed");
+        int pent = -1;
+        for (size_t i = 0; i < fac.size(); ++i) if (fac[i].name == "Pentatonic Arp") pent = (int) i;
+        CHECK(pent >= 0, "Pentatonic Arp setup exists");
+        if (pent >= 0)
+        {
+            u.applySetup(fac[(size_t) pent].tree, fac[(size_t) pent].name);
+            CHECK(raw("arpOn") > 0.5f && (int) raw("scale") == 14 && (int) raw("root") == 4, "factory setup loads scale + arp");
+            CHECK((int) raw("theme") == 2, "setup leaves the theme alone");
+            CHECK(u.getSetupName() == "Pentatonic Arp", "setup name remembered");
+        }
+        u.saveChordType(2, "Sixish", { 0, 4, 9 });
+        u.apvts.getParameter("chd1")->setValueNotifyingHost(u.apvts.getParameter("chd1")->convertTo0to1(16));
+        CHECK(SetupPresets::writeUserPreset("My Setup", u.captureSetup()), "user setup written");
+        auto users = SetupPresets::scanUserPresets();
+        CHECK(users.size() == 1 && users[0].name == "My Setup", "user setup listed");
+        u.applySetup(fac[0].tree, fac[0].name); // Init
+        CHECK(raw("arpOn") < 0.5f && (int) raw("scale") == 0 && (int) raw("chd1") == 0, "Init resets to defaults");
+        CHECK(u.customChordDisplayName(2) == "Custom 3", "Init clears custom chord types");
+        if (! users.empty())
+        {
+            u.applySetup(SetupPresets::readUserPreset(users[0].file), users[0].name);
+            CHECK(raw("arpOn") > 0.5f && (int) raw("chd1") == 16 && u.customChordDisplayName(2) == "Sixish",
+                  "user setup restores params + custom chords");
+        }
+        u.undo();
+        CHECK(raw("arpOn") < 0.5f && u.customChordDisplayName(2) == "Custom 3", "undo reverts a setup load");
+        CHECK(SetupPresets::deleteUserPreset(users.empty() ? juce::File() : users[0].file), "user setup deleted");
+        dir.deleteRecursively();
+    }
 
     // --- white-keys degree mapping: C D E F G A B -> C D# F F# G A# C (C minor blues) ---
     {
@@ -175,6 +269,35 @@ int main()
         bool only67 = r.count(true) > 0 && r.count(true, 67) == r.count(true);
         CHECK(only67, "latched pool replaced by new chord");
     }
+    { // processBlock allocates nothing: chords, strum, sustain, custom scale + chord, arp
+        Rig r; r.set("scale", (float) Scales::customIndex()); r.set("chordOn", 1); r.set("strum", 10.0f);
+        r.set("bassBelow", 1); r.set("inversion", 1);
+        r.p.saveChordType(0, "Six", { 0, 4, 7, 9 }); r.set("chd2", 14);
+        juce::MidiBuffer m; m.ensureSize(4096);
+        juce::AudioBuffer<float> buf(0, Rig::B);
+        long allocs = 0;
+        for (int pass = 0; pass < 2; ++pass) // pass 0 warms up, pass 1 is counted
+        {
+            r.set("arpOn", 0);
+            for (int b = 0; b < 120; ++b)
+            {
+                m.clear();
+                if (b == 60) r.set("arpOn", 1);
+                if (b % 3 == 0) m.addEvent(juce::MidiMessage::noteOn(1, 48 + (b % 24), (juce::uint8) 90), b % 400);
+                if (b % 3 == 1) m.addEvent(juce::MidiMessage::noteOff(1, 48 + ((b - 1) % 24)), 7);
+                if (b % 20 == 5) m.addEvent(juce::MidiMessage::controllerEvent(1, 64, 127), 3);
+                if (b % 20 == 15) m.addEvent(juce::MidiMessage::controllerEvent(1, 64, 0), 3);
+                if (b % 30 == 0) r.p.queueAuditionNote(true, 62, 100);
+                if (b % 30 == 2) r.p.queueAuditionNote(false, 62, 0);
+                gAllocs = 0; gCountAllocs = pass == 1;
+                r.p.processBlock(buf, m);
+                gCountAllocs = false;
+                allocs += gAllocs.load();
+            }
+        }
+        CHECK(allocs == 0, "processBlock does not allocate");
+        if (allocs != 0) printf("   (%ld allocations)\n", allocs);
+    }
     { // editor audition goes through the normal path
         Rig r; r.p.queueAuditionNote(true, 61, 100); r.idle(1);
         r.p.queueAuditionNote(false, 61, 0); r.idle(1);
@@ -182,8 +305,6 @@ int main()
     }
 
     // --- screenshot in a musically interesting state ---
-    for (int i = 0; i < 12; ++i)
-        printf("chd%d raw=%f\n", i, proc.apvts.getRawParameterValue("chd" + juce::String(i))->load());
     std::unique_ptr<juce::AudioProcessorEditor> ed(proc.createEditor());
     ed->setSize(960, 800);
     if (auto* p = proc.apvts.getParameter("root"))
@@ -214,6 +335,22 @@ int main()
     juce::FileOutputStream os(f);
     juce::PNGImageFormat png;
     png.writeImageToStream(img, os);
+
+    // second shot with the setup browser open
+    if (auto* me = dynamic_cast<MidiNoteModifierEditor*>(ed.get()))
+    {
+        if (auto* pb = me->findChildWithID("presetButton"))
+            if (auto* b = dynamic_cast<juce::Button*>(pb)) if (b->onClick) b->onClick();
+        juce::Image img2(juce::Image::RGB, shotW, shotH, true);
+        {
+            juce::Graphics g(img2);
+            ed->paintEntireComponent(g, false);
+        }
+        juce::File f2 = f.getSiblingFile(f.getFileNameWithoutExtension() + "_setups.png");
+        f2.deleteFile();
+        juce::FileOutputStream os2(f2);
+        png.writeImageToStream(img2, os2);
+    }
 
     printf(fails == 0 ? "ALL TESTS PASSED\n" : "FAILURES: %d\n", fails);
     return fails == 0 ? 0 : 1;

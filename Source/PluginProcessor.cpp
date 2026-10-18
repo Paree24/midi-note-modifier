@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Theme.h"
+#include "SetupPresets.h"
 #include <algorithm>
 
 static juce::StringArray themeChoiceNames()
@@ -21,17 +22,34 @@ static std::unique_ptr<juce::PropertiesFile> createSettingsFile()
 }
 
 MidiNoteModifierProcessor::MidiNoteModifierProcessor()
-    : AudioProcessor(BusesProperties()), apvts(*this, nullptr, "Params", createLayout())
+    : AudioProcessor(BusesProperties()), apvts(*this, nullptr, "Params", createLayout()),
+      undoHistory(*this, [this] { return captureUndoState(); },
+                  [this](const juce::ValueTree& v) { restoreUndoState(v); })
 {
     for (int s = 0; s < kNumCustomChords; ++s)
     {
         customChordNames[s] = "";
         customChordIvs[s] = { 0 };
+        customChordPacked[s].store(packIntervals({ 0 }));
     }
+    auto raw = [this](const juce::String& id) { return apvts.getRawParameterValue(id); };
+    pRoot = raw("root"); pScale = raw("scale"); pSnap = raw("snap");
+    pScaleLock = raw("scaleLock"); pWhiteKeys = raw("whiteKeys"); pChordOn = raw("chordOn");
+    pInversion = raw("inversion"); pInvLower = raw("invLower"); pBassBelow = raw("bassBelow");
+    pStrum = raw("strum"); pArpOn = raw("arpOn"); pArpLatch = raw("arpLatch");
+    pArpMode = raw("arpMode"); pArpRate = raw("arpRate"); pArpOct = raw("arpOct");
+    pSwing = raw("swing"); pGate = raw("gate");
+    for (int i = 0; i < 12; ++i) pPc[i] = raw("pc" + juce::String(i));
+    for (int i = 0; i < kNumChordSlots; ++i) pChd[i] = raw("chd" + juce::String(i));
+    rtIntervals.reserve(12);
+    outBuffer.ensureSize(4096);
     // fresh instances start on the user's global default theme
     // (a host state recall later overrides this per instance)
     if (auto* p = apvts.getParameter("theme"))
+    {
         p->setValueNotifyingHost(p->convertTo0to1(loadDefaultTheme()));
+        undoHistory.ignoreParameter(p->getParameterIndex()); // colour scheme isn't an edit
+    }
 }
 
 int MidiNoteModifierProcessor::loadDefaultTheme()
@@ -115,16 +133,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout MidiNoteModifierProcessor::c
 
 void MidiNoteModifierProcessor::prepareToPlay(double sampleRate, int)
 {
-    juce::ScopedLock sl(stateLock);
     currentSampleRate = sampleRate;
-    pendingOns.reserve(256);
+    outBuffer.ensureSize(4096);
 }
 
 bool MidiNoteModifierProcessor::isBusesLayoutSupported(const BusesLayout&) const { return true; }
 
 std::vector<int> MidiNoteModifierProcessor::currentIntervals()
 {
-    int scaleIdx = (int) apvts.getRawParameterValue("scale")->load();
+    int scaleIdx = (int) pScale->load();
     auto& facts = Scales::factoryScales();
     if (scaleIdx < 0) scaleIdx = 0;
     if (scaleIdx >= (int) facts.size()) scaleIdx = 0;
@@ -132,7 +149,7 @@ std::vector<int> MidiNoteModifierProcessor::currentIntervals()
     {
         std::vector<int> iv;
         for (int i = 0; i < 12; ++i)
-            if (apvts.getRawParameterValue("pc" + juce::String(i))->load() > 0.5f)
+            if (pPc[i]->load() > 0.5f)
                 iv.push_back(i);
         if (iv.empty()) iv.push_back(0);
         return iv;
@@ -140,9 +157,26 @@ std::vector<int> MidiNoteModifierProcessor::currentIntervals()
     return facts[(size_t) scaleIdx].intervals;
 }
 
+// Audio-thread version: factory scales by reference, the Custom pattern
+// rebuilt into reserved storage.
+const std::vector<int>& MidiNoteModifierProcessor::currentIntervalsRT()
+{
+    int scaleIdx = (int) pScale->load();
+    auto& facts = Scales::factoryScales();
+    if (scaleIdx < 0 || scaleIdx >= (int) facts.size()) scaleIdx = 0;
+    if (scaleIdx != Scales::customIndex())
+        return facts[(size_t) scaleIdx].intervals;
+    rtIntervals.clear();
+    for (int i = 0; i < 12; ++i)
+        if (pPc[i]->load() > 0.5f)
+            rtIntervals.push_back(i);
+    if (rtIntervals.empty()) rtIntervals.push_back(0);
+    return rtIntervals;
+}
+
 int MidiNoteModifierProcessor::currentRoot()
 {
-    return juce::jlimit(0, 11, (int) apvts.getRawParameterValue("root")->load());
+    return juce::jlimit(0, 11, (int) pRoot->load());
 }
 
 std::array<bool,12> MidiNoteModifierProcessor::currentPcSet()
@@ -162,9 +196,28 @@ juce::StringArray MidiNoteModifierProcessor::getAllScaleNames() const
     return names;
 }
 
+bool MidiNoteModifierProcessor::isReservedScaleName(const juce::String& name)
+{
+    // factory scale names (incl. "Custom") can't be reused for user scales:
+    // the scale menu resolves selections by name
+    for (auto& s : Scales::factoryScales())
+        if (name.trim().equalsIgnoreCase(juce::String(s.name)))
+            return true;
+    return false;
+}
+
+bool MidiNoteModifierProcessor::isUserScale(const juce::String& name) const
+{
+    auto user = apvts.state.getChildWithName("USER_SCALES");
+    for (int i = 0; i < user.getNumChildren(); ++i)
+        if (user.getChild(i).getProperty("name").toString() == name)
+            return true;
+    return false;
+}
+
 bool MidiNoteModifierProcessor::saveCustomScale(const juce::String& name)
 {
-    if (name.isEmpty()) return false;
+    if (name.isEmpty() || isReservedScaleName(name)) return false;
     juce::String pattern;
     for (int i = 0; i < 12; ++i)
         pattern += (apvts.getRawParameterValue("pc" + juce::String(i))->load() > 0.5f) ? "1" : "0";
@@ -238,6 +291,29 @@ static std::vector<int> stringToIvs(const juce::String& s)
     return ivs;
 }
 
+// 6 intervals (0..24) in 5 bits each plus a 4-bit count: one lock-free word per slot.
+juce::uint64 MidiNoteModifierProcessor::packIntervals(const std::vector<int>& ivs)
+{
+    juce::uint64 v = 0;
+    int n = juce::jmin((int) ivs.size(), kMaxChordNotes);
+    for (int k = 0; k < n; ++k)
+        v |= (juce::uint64) (juce::jlimit(0, 24, ivs[(size_t) k]) & 31) << (4 + 5 * k);
+    return v | (juce::uint64) n;
+}
+
+int MidiNoteModifierProcessor::unpackIntervals(juce::uint64 packed, int* out)
+{
+    int n = juce::jmin((int) (packed & 15), kMaxChordNotes);
+    for (int k = 0; k < n; ++k)
+        out[k] = (int) ((packed >> (4 + 5 * k)) & 31);
+    return n;
+}
+
+void MidiNoteModifierProcessor::publishCustomChord(int slot)
+{
+    customChordPacked[slot].store(packIntervals(customChordIvs[slot]));
+}
+
 bool MidiNoteModifierProcessor::saveChordType(int slot, const juce::String& name,
                                               const std::vector<int>& intervals)
 {
@@ -247,6 +323,7 @@ bool MidiNoteModifierProcessor::saveChordType(int slot, const juce::String& name
         juce::ScopedLock sl(chordTypeLock);
         customChordNames[slot] = name.trim().substring(0, 24);
         customChordIvs[slot] = ivs;
+        publishCustomChord(slot);
     }
     storeCustomChordTypesToState();
     return true;
@@ -259,12 +336,13 @@ bool MidiNoteModifierProcessor::resetChordType(int slot)
         juce::ScopedLock sl(chordTypeLock);
         customChordNames[slot] = "";
         customChordIvs[slot] = { 0 };
+        publishCustomChord(slot);
     }
     storeCustomChordTypesToState();
     // any degree using this slot falls back to Auto
     for (int i = 0; i < kNumChordSlots; ++i)
     {
-        int idx = (int) apvts.getRawParameterValue("chd" + juce::String(i))->load();
+        int idx = (int) pChd[i]->load();
         if (idx == 14 + slot)
             if (auto* par = apvts.getParameter("chd" + juce::String(i)))
                 par->setValueNotifyingHost(0.0f);
@@ -310,11 +388,75 @@ void MidiNoteModifierProcessor::loadCustomChordTypesFromState()
     juce::ScopedLock sl(chordTypeLock);
     for (int s = 0; s < kNumCustomChords; ++s)
     {
-        if (! node.isValid()) { customChordNames[s] = ""; customChordIvs[s] = { 0 }; continue; }
+        if (! node.isValid()) { customChordNames[s] = ""; customChordIvs[s] = { 0 }; publishCustomChord(s); continue; }
         customChordNames[s] = node.getProperty("name" + juce::String(s), "").toString()
                                   .substring(0, 24);
         customChordIvs[s] = stringToIvs(node.getProperty("iv" + juce::String(s), "0").toString());
+        publishCustomChord(s);
     }
+}
+
+juce::ValueTree MidiNoteModifierProcessor::captureUndoState()
+{
+    return apvts.copyState();
+}
+
+// Undo/redo restores scale/chord/arp settings, user scales and custom chord
+// types; the colour theme and the keyboard octave stay as they are.
+void MidiNoteModifierProcessor::restoreUndoState(const juce::ValueTree& snapshot)
+{
+    auto v = snapshot.createCopy();
+    for (int i = 0; i < v.getNumChildren(); ++i)
+    {
+        auto c = v.getChild(i);
+        if (c.hasType("PARAM") && c.getProperty("id").toString() == "theme")
+            c.setProperty("value", apvts.getRawParameterValue("theme")->load(), nullptr);
+    }
+    apvts.replaceState(v);
+    loadCustomChordTypesFromState();
+    ++stateVersion;
+}
+
+juce::ValueTree MidiNoteModifierProcessor::captureSetup()
+{
+    juce::ValueTree t(SetupPresets::kRootType);
+    t.setProperty("version", 1, nullptr);
+    for (auto* prm : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(prm))
+        {
+            if (rp->getParameterID() == "theme") continue;
+            juce::ValueTree c("PARAM");
+            c.setProperty("id", rp->getParameterID(), nullptr);
+            c.setProperty("value", rp->convertFrom0to1(rp->getValue()), nullptr);
+            t.appendChild(c, nullptr);
+        }
+    auto chords = apvts.state.getChildWithName("CUSTOM_CHORDS");
+    if (chords.isValid()) t.appendChild(chords.createCopy(), nullptr);
+    return t;
+}
+
+// Parameters missing from the setup load their defaults, so every setup is
+// complete; the theme, user scales and keyboard octave are left alone.
+void MidiNoteModifierProcessor::applySetup(const juce::ValueTree& setup, const juce::String& name)
+{
+    SnapshotUndo::Transaction undoStep(undoHistory);
+    for (auto* prm : getParameters())
+        if (auto* rp = dynamic_cast<juce::RangedAudioParameter*>(prm))
+        {
+            if (rp->getParameterID() == "theme") continue;
+            auto c = setup.getChildWithProperty("id", rp->getParameterID());
+            float norm = c.isValid() ? rp->convertTo0to1((float) c.getProperty("value"))
+                                     : rp->getDefaultValue();
+            if (std::abs(rp->getValue() - norm) > 1.0e-6f)
+                rp->setValueNotifyingHost(norm);
+        }
+    auto old = apvts.state.getChildWithName("CUSTOM_CHORDS");
+    if (old.isValid()) apvts.state.removeChild(old, nullptr);
+    auto chords = setup.getChildWithName("CUSTOM_CHORDS");
+    if (chords.isValid()) apvts.state.appendChild(chords.createCopy(), nullptr);
+    loadCustomChordTypesFromState();
+    apvts.state.setProperty("setupName", name, nullptr);
+    ++stateVersion;
 }
 
 void MidiNoteModifierProcessor::resetDiatonicChords()
@@ -328,13 +470,14 @@ void MidiNoteModifierProcessor::panic() { panicFlag.store(true); }
 
 void MidiNoteModifierProcessor::queueAuditionNote(bool on, int midiNote, int velocity)
 {
-    juce::ScopedLock sl(stateLock);
-    auditionQueue.push_back({ on, midiNote, velocity });
+    const auto scope = auditionFifo.write(1);
+    if (scope.blockSize1 > 0) auditionBuf[scope.startIndex1] = { on, midiNote, velocity };
+    else if (scope.blockSize2 > 0) auditionBuf[scope.startIndex2] = { on, midiNote, velocity };
 }
 
 float MidiNoteModifierProcessor::getRateBeats() const
 {
-    int r = (int) apvts.getRawParameterValue("arpRate")->load();
+    int r = (int) pArpRate->load();
     switch (r)
     {
         case 0:  return 1.0f;        // 1/4
@@ -356,84 +499,95 @@ float MidiNoteModifierProcessor::getRateBeats() const
     }
 }
 
-int MidiNoteModifierProcessor::buildChordForSnapped(int snapped, std::vector<int>& out, int& degreeOut)
+int MidiNoteModifierProcessor::buildChordForSnapped(int snapped, int* out, int& count, int& degreeOut)
 {
     int root = currentRoot();
-    auto intervals = currentIntervals();
-    int scaleIdx = (int) apvts.getRawParameterValue("scale")->load();
+    const auto& intervals = currentIntervalsRT();
+    int scaleIdx = (int) pScale->load();
     auto& facts = Scales::factoryScales();
     bool powerDefault = scaleIdx >= 0 && scaleIdx < (int) facts.size()
                         && facts[(size_t) scaleIdx].powerChords;
     int deg = Scales::scaleDegree(snapped, root, intervals);
     degreeOut = deg;
-    bool chordOn = apvts.getRawParameterValue("chordOn")->load() > 0.5f;
-    if (! chordOn) { out = { snapped }; return deg; }
+    bool chordOn = pChordOn->load() > 0.5f;
+    if (! chordOn) { out[0] = snapped; count = 1; return deg; }
 
-    std::vector<int> rel;
+    int rel[kMaxEmit];
+    int nRel = 1;
+    rel[0] = 0;
     if (deg >= 0)
     {
         int slot = deg % kNumChordSlots;
-        int c = (int) apvts.getRawParameterValue("chd" + juce::String(slot))->load();
+        int c = (int) pChd[slot]->load();
         if (c >= 14) // user-defined chord type (Custom 1..6)
         {
-            juce::ScopedLock sl(chordTypeLock);
-            rel = customChordIvs[juce::jlimit(0, kNumCustomChords - 1, c - 14)];
-            if (rel.empty()) rel = { 0 };
+            nRel = unpackIntervals(customChordPacked[juce::jlimit(0, kNumCustomChords - 1, c - 14)].load(), rel);
+            if (nRel == 0) { rel[0] = 0; nRel = 1; }
         }
         else
         {
             int forced = c - 1;
-            if (forced == 0) rel = { 0 };                                    // Single
-            else if (forced > 0) rel = Scales::forcedChordIntervals(forced); // explicit override
-            else if (powerDefault) rel = Scales::forcedChordIntervals(7);   // power-chord default
-            else rel = Scales::diatonicTriad(deg, intervals);               // Auto diatonic
+            if (forced == 0) nRel = 1;                                                // Single
+            else if (forced > 0) nRel = Scales::forcedChordIntervals(forced, rel);   // explicit override
+            else if (powerDefault) nRel = Scales::forcedChordIntervals(7, rel);      // power-chord default
+            else nRel = Scales::diatonicTriad(deg, intervals, rel);                  // Auto diatonic
         }
     }
-    else rel = { 0 };
 
-    out.clear();
-    for (int iv : rel)
+    count = 0;
+    for (int k = 0; k < nRel; ++k)
     {
-        int n = snapped + iv;
-        if (n >= 0 && n <= 127) out.push_back(n);
+        int n = snapped + rel[k];
+        if (n >= 0 && n <= 127) out[count++] = n;
     }
-    int inv = (int) apvts.getRawParameterValue("inversion")->load();
-    bool lower = apvts.getRawParameterValue("invLower")->load() > 0.5f;
-    bool bass = apvts.getRawParameterValue("bassBelow")->load() > 0.5f;
-    applyInversionBass(out, inv, lower, bass);
-    std::sort(out.begin(), out.end());
-    out.erase(std::unique(out.begin(), out.end()), out.end());
+    int inv = (int) pInversion->load();
+    bool lower = pInvLower->load() > 0.5f;
+    bool bass = pBassBelow->load() > 0.5f;
+    applyInversionBass(out, count, inv, lower, bass);
+    std::sort(out, out + count);
+    count = (int) (std::unique(out, out + count) - out);
     return deg;
 }
 
-void MidiNoteModifierProcessor::applyInversionBass(std::vector<int>& chord, int inversion,
+// chord: sorted-or-not note array with room for kMaxEmit entries
+void MidiNoteModifierProcessor::applyInversionBass(int* chord, int& count, int inversion,
                                                    bool lower, bool bassBelow)
 {
-    if (chord.size() > 1)
+    if (count > 1)
     {
         for (int k = 0; k < inversion && k < 2; ++k)
         {
-            int low = chord.front();
-            chord.erase(chord.begin());
+            int low = chord[0];
             int up = low + 12;
-            if (up <= 127) chord.push_back(up);
-            else { chord.insert(chord.begin(), low); break; }
+            if (up > 127) break; // can't move the lowest note up: stop inverting
+            std::rotate(chord, chord + 1, chord + count);
+            chord[count - 1] = up;
         }
-        std::sort(chord.begin(), chord.end());
+        std::sort(chord, chord + count);
     }
-    if (lower && ! chord.empty())
+    if (lower && count > 0)
     {
         // same inversion shape, one octave down (e.g. E5 G5 C6 -> E4 G4 C5)
-        std::vector<int> down;
-        for (int n : chord)
-            if (n - 12 >= 0) down.push_back(n - 12);
-        if (! down.empty()) chord = down;
+        int down[kMaxEmit];
+        int nd = 0;
+        for (int k = 0; k < count; ++k)
+            if (chord[k] - 12 >= 0) down[nd++] = chord[k] - 12;
+        if (nd > 0)
+        {
+            std::copy(down, down + nd, chord);
+            count = nd;
+        }
     }
-    if (bassBelow && ! chord.empty())
+    if (bassBelow && count > 0 && count < kMaxEmit)
     {
-        int b = chord.front() - 12;
+        int b = chord[0] - 12;
         // bass is the chord root an octave below (use lowest note as root ref)
-        if (b >= 0) chord.insert(chord.begin(), b);
+        if (b >= 0)
+        {
+            std::copy_backward(chord, chord + count, chord + count + 1);
+            chord[0] = b;
+            ++count;
+        }
     }
 }
 
@@ -458,10 +612,11 @@ void MidiNoteModifierProcessor::killAllSound(juce::MidiBuffer& out)
 
 void MidiNoteModifierProcessor::resetAllNoteState()
 {
-    voices.clear();
+    for (auto& v : voices) v.active = false;
+    numVoices = 0;
     clearArpPool();
-    sustainedNotes.clear(); deferredOffs.clear();
-    pendingOns.clear();
+    numDeferred = 0;
+    numPendingOns = 0;
     for (auto& ch : outRefCount) std::fill(std::begin(ch), std::end(ch), 0);
     arpImmediatePending = false;
     arpCurrentNote = -1;
@@ -487,61 +642,91 @@ void MidiNoteModifierProcessor::voiceNoteOff(juce::MidiBuffer& out, int pos, int
 // simply cancelled, otherwise its note-off is sent (ref-counted).
 void MidiNoteModifierProcessor::releaseVoiceNote(juce::MidiBuffer& out, int pos, int note, int ch)
 {
-    for (auto it = pendingOns.begin(); it != pendingOns.end(); ++it)
-        if (it->note == note && it->channel == ch)
+    for (int i = 0; i < numPendingOns; ++i)
+        if (pendingOns[i].note == note && pendingOns[i].channel == ch)
         {
-            pendingOns.erase(it);
+            std::copy(pendingOns + i + 1, pendingOns + numPendingOns, pendingOns + i);
+            --numPendingOns;
             return;
         }
     voiceNoteOff(out, pos, note, ch);
 }
 
-void MidiNoteModifierProcessor::addToArpPool(const std::vector<int>& notes)
+// Defer a note-off until the sustain pedal lifts (released right away if the
+// fixed list is full, so nothing can hang).
+void MidiNoteModifierProcessor::addDeferred(juce::MidiBuffer& out, int pos, int note, int ch)
 {
-    for (int n : notes)
-        if (arpRefCount[n]++ == 0)
-        {
-            arpPool.insert(std::lower_bound(arpPool.begin(), arpPool.end(), n), n);
-            arpPlayedOrder.push_back(n);
-        }
+    if (numDeferred < kMaxDeferred) deferredOffs[numDeferred++] = { note, ch };
+    else releaseVoiceNote(out, pos, note, ch);
 }
 
-void MidiNoteModifierProcessor::removeFromArpPool(const std::vector<int>& notes)
+void MidiNoteModifierProcessor::removeVoice(int inNote)
 {
-    for (int n : notes)
+    if (voices[inNote].active) { voices[inNote].active = false; --numVoices; }
+}
+
+int MidiNoteModifierProcessor::firstVoiceChannel() const
+{
+    for (auto& v : voices)
+        if (v.active) return v.channel;
+    return 1;
+}
+
+void MidiNoteModifierProcessor::addToArpPool(const int* notes, int count)
+{
+    for (int k = 0; k < count; ++k)
     {
-        auto rc = arpRefCount.find(n);
-        if (rc != arpRefCount.end() && --rc->second <= 0)
+        int n = notes[k] & 127;
+        if (arpRefCount[n]++ == 0)
         {
-            arpRefCount.erase(rc);
-            arpPool.erase(std::remove(arpPool.begin(), arpPool.end(), n), arpPool.end());
-            arpPlayedOrder.erase(std::remove(arpPlayedOrder.begin(), arpPlayedOrder.end(), n), arpPlayedOrder.end());
+            int at = (int) (std::lower_bound(arpPool, arpPool + arpPoolSize, n) - arpPool);
+            std::copy_backward(arpPool + at, arpPool + arpPoolSize, arpPool + arpPoolSize + 1);
+            arpPool[at] = n;
+            ++arpPoolSize;
+            arpPlayedOrder[arpPlayedSize++] = n;
+        }
+    }
+}
+
+void MidiNoteModifierProcessor::removeFromArpPool(const int* notes, int count)
+{
+    for (int k = 0; k < count; ++k)
+    {
+        int n = notes[k] & 127;
+        if (arpRefCount[n] > 0 && --arpRefCount[n] <= 0)
+        {
+            arpRefCount[n] = 0;
+            arpPoolSize = (int) (std::remove(arpPool, arpPool + arpPoolSize, n) - arpPool);
+            arpPlayedSize = (int) (std::remove(arpPlayedOrder, arpPlayedOrder + arpPlayedSize, n) - arpPlayedOrder);
         }
     }
 }
 
 void MidiNoteModifierProcessor::clearArpPool()
 {
-    arpPool.clear(); arpPlayedOrder.clear(); arpRefCount.clear();
+    arpPoolSize = 0; arpPlayedSize = 0;
+    std::fill(std::begin(arpRefCount), std::end(arpRefCount), 0);
 }
 
 int MidiNoteModifierProcessor::pickArpNote()
-
 {
-    if (arpPool.empty()) return -1;
-    int mode = (int) apvts.getRawParameterValue("arpMode")->load();
-    int oct = juce::jlimit(1, 4, (int) apvts.getRawParameterValue("arpOct")->load() + 1);
+    if (arpPoolSize == 0) return -1;
+    int mode = (int) pArpMode->load();
+    int oct = juce::jlimit(1, 4, (int) pArpOct->load() + 1);
 
-    // Build octave-expanded list ascending
-    std::vector<int> exp;
+    // Played order uses the insertion order, the others the sorted pool;
+    // both are expanded with octaves into fixed storage.
+    const int* src = mode == 5 ? arpPlayedOrder : arpPool;
+    const int srcSize = mode == 5 ? arpPlayedSize : arpPoolSize;
+    int N = 0;
     for (int o = 0; o < oct; ++o)
-        for (int n : arpPool)
+        for (int i = 0; i < srcSize; ++i)
         {
-            int v = n + 12 * o;
-            if (v <= 127) exp.push_back(v);
+            int v = src[i] + 12 * o;
+            if (v <= 127) arpExpanded[N++] = v;
         }
-    if (exp.empty()) return -1;
-    int N = (int) exp.size();
+    if (N == 0) return -1;
+    const int* exp = arpExpanded;
 
     switch (mode)
     {
@@ -559,18 +744,8 @@ int MidiNoteModifierProcessor::pickArpNote()
             int p = arpStepIndex % cyc;
             return p < N ? exp[N - 1 - p] : exp[p - (N - 1)];
         }
-        case 4: return exp[juce::Random::getSystemRandom().nextInt(N)]; // Random
-        case 5: { // Played order expanded with octaves
-            std::vector<int> po;
-            for (int o = 0; o < oct; ++o)
-                for (int n : arpPlayedOrder)
-                {
-                    int v = n + 12 * o;
-                    if (v <= 127) po.push_back(v);
-                }
-            if (po.empty()) return -1;
-            return po[arpStepIndex % (int) po.size()];
-        }
+        case 4: return exp[arpRandom.nextInt(N)]; // Random
+        case 5: return exp[arpStepIndex % N];      // Played order expanded with octaves
         default: return exp[arpStepIndex % N];
     }
 }
@@ -578,85 +753,76 @@ int MidiNoteModifierProcessor::pickArpNote()
 void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     buffer.clear();
-    juce::MidiBuffer out;
+    auto& out = outBuffer;
+    out.clear();
     const int numSamples = buffer.getNumSamples();
 
     // --- Panic flag from UI ---
     if (panicFlag.exchange(false))
     {
-        juce::ScopedLock sl(stateLock);
         killAllSound(out);
         resetAllNoteState();
-        auditionQueue.clear();
+        { const auto drop = auditionFifo.read(auditionFifo.getNumReady()); } // discard queued auditions
         sampleClock += numSamples;
-        midi.swapWith(out);
+        midi.clear();
+        midi.addEvents(out, 0, -1, 0);
         return;
     }
 
     // --- Read params (audio thread safe via atomic loads) ---
     int root = currentRoot();
-    int snapMode = juce::jlimit(0, 2, (int) apvts.getRawParameterValue("snap")->load());
-    bool scaleLock = apvts.getRawParameterValue("scaleLock")->load() > 0.5f;
-    bool whiteKeys = apvts.getRawParameterValue("whiteKeys")->load() > 0.5f;
-    bool arpOn = apvts.getRawParameterValue("arpOn")->load() > 0.5f;
-    bool arpLatch = apvts.getRawParameterValue("arpLatch")->load() > 0.5f;
-    float strumMs = apvts.getRawParameterValue("strum")->load();
-    float gatePct = apvts.getRawParameterValue("gate")->load();
-    float swingPct = apvts.getRawParameterValue("swing")->load();
-    auto intervals = currentIntervals();
+    int snapMode = juce::jlimit(0, 2, (int) pSnap->load());
+    bool scaleLock = pScaleLock->load() > 0.5f;
+    bool whiteKeys = pWhiteKeys->load() > 0.5f;
+    bool arpOn = pArpOn->load() > 0.5f;
+    bool arpLatch = pArpLatch->load() > 0.5f;
+    float strumMs = pStrum->load();
+    float gatePct = pGate->load();
+    float swingPct = pSwing->load();
+    const auto& intervals = currentIntervalsRT();
 
+    // Arp switched on/off while notes are held: hand the held notes over
+    // instead of leaving them stuck in the other mode's bookkeeping.
+    if (arpOn != prevArpOn)
     {
-        juce::ScopedLock sl(stateLock);
-
-        // Arp switched on/off while notes are held: hand the held notes over
-        // instead of leaving them stuck in the other mode's bookkeeping.
-        if (arpOn != prevArpOn)
+        if (arpOn)
         {
-            if (arpOn)
-            {
-                for (auto& d : deferredOffs)
-                    if (d.first >= 0) releaseVoiceNote(out, 0, d.first, d.second);
-                deferredOffs.clear();
-                clearArpPool();
-                for (auto& [inNote, v] : voices)
-                {
-                    for (int n : v.emitted) releaseVoiceNote(out, 0, n, v.channel);
-                    addToArpPool(v.emitted);
-                }
-                if (! arpPool.empty())
-                {
-                    resetArpPosition();
-                    arpImmediatePending = true; arpImmediatePos = 0;
-                    arpImmediateCh = voices.begin()->second.channel;
-                }
-            }
-            else
-            {
-                // held keys go silent until re-pressed; the arp note is stopped below
-                clearArpPool();
-                voices.clear();
-                deferredOffs.clear();
-            }
-            prevArpOn = arpOn;
-        }
-
-        // Latch released: keep arpeggiating only the keys still held.
-        if (! arpLatch && prevLatch && arpOn)
-        {
+            for (int d = 0; d < numDeferred; ++d)
+                if (deferredOffs[d].first >= 0) releaseVoiceNote(out, 0, deferredOffs[d].first, deferredOffs[d].second);
+            numDeferred = 0;
             clearArpPool();
-            for (auto& [inNote, v] : voices) addToArpPool(v.emitted);
+            for (auto& v : voices)
+            {
+                if (! v.active) continue;
+                for (int k = 0; k < v.numEmitted; ++k) releaseVoiceNote(out, 0, v.emitted[k], v.channel);
+                addToArpPool(v.emitted, v.numEmitted);
+            }
+            if (arpPoolSize > 0)
+            {
+                resetArpPosition();
+                arpImmediatePending = true; arpImmediatePos = 0;
+                arpImmediateCh = firstVoiceChannel();
+            }
         }
-        prevLatch = arpLatch;
-
-        // Editor keyboard auditions are fed through the normal MIDI path (channel 1).
-        for (auto& a : auditionQueue)
+        else
         {
-            int note = juce::jlimit(0, 127, a.note);
-            midi.addEvent(a.on ? juce::MidiMessage::noteOn(1, note, (juce::uint8) juce::jlimit(1, 127, a.vel))
-                               : juce::MidiMessage::noteOff(1, note), 0);
+            // held keys go silent until re-pressed; the arp note is stopped below
+            clearArpPool();
+            for (auto& v : voices) v.active = false;
+            numVoices = 0;
+            numDeferred = 0;
         }
-        auditionQueue.clear();
+        prevArpOn = arpOn;
     }
+
+    // Latch released: keep arpeggiating only the keys still held.
+    if (! arpLatch && prevLatch && arpOn)
+    {
+        clearArpPool();
+        for (auto& v : voices)
+            if (v.active) addToArpPool(v.emitted, v.numEmitted);
+    }
+    prevLatch = arpLatch;
 
     // --- Transport: DAW tempo only. When stopped, keep the last seen tempo
     // so the arp can free-run; there is no manual BPM (this is a plugin).
@@ -678,11 +844,8 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
     const int strumStep = (int) (strumMs * currentSampleRate / 1000.0);
 
     // --- Incoming MIDI ---
-    for (const auto meta : midi)
+    auto handleMessage = [&](const juce::MidiMessage& msg, int pos)
     {
-        const auto msg = meta.getMessage();
-        int pos = juce::jlimit(0, juce::jmax(0, numSamples - 1), meta.samplePosition);
-
         if (msg.isNoteOn())
         {
             int inNote = msg.getNoteNumber();
@@ -693,42 +856,40 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             if (scaleLock)
                 snapped = whiteKeys ? Scales::degreeMapNote(inNote, root, intervals)
                                     : Scales::snapNote(inNote, root, intervals, snapMode);
-            std::vector<int> chord; int deg = -1;
-            buildChordForSnapped(snapped, chord, deg);
+            int chord[kMaxEmit]; int chordSize = 0; int deg = -1;
+            buildChordForSnapped(snapped, chord, chordSize, deg);
 
-            juce::ScopedLock sl(stateLock);
-            bool poolWasEmpty = arpPool.empty();
+            bool poolWasEmpty = arpPoolSize == 0;
 
             // retrigger same input note: release old first
-            auto old = voices.find(inNote);
-            if (old != voices.end())
+            auto& old = voices[inNote];
+            if (old.active)
             {
                 if (arpOn)
                 {
-                    removeFromArpPool(old->second.emitted);
+                    removeFromArpPool(old.emitted, old.numEmitted);
                     // drop any pool removal still waiting on the sustain pedal
-                    deferredOffs.erase(std::remove(deferredOffs.begin(), deferredOffs.end(),
-                                                   std::make_pair(-1000 - inNote, old->second.channel)),
-                                       deferredOffs.end());
+                    const Deferred marker { -1000 - inNote, old.channel };
+                    numDeferred = (int) (std::remove(deferredOffs, deferredOffs + numDeferred, marker) - deferredOffs);
                 }
                 else
-                    for (int n : old->second.emitted)
+                    for (int k = 0; k < old.numEmitted; ++k)
                     {
-                        if (sustainDown) deferredOffs.emplace_back(n, old->second.channel);
-                        else releaseVoiceNote(out, pos, n, old->second.channel);
+                        if (sustainDown) addDeferred(out, pos, old.emitted[k], old.channel);
+                        else releaseVoiceNote(out, pos, old.emitted[k], old.channel);
                     }
-                voices.erase(old);
+                removeVoice(inNote);
             }
 
             if (arpOn)
             {
                 // latch: a new chord after all keys were released replaces the latched one
-                if (arpLatch && voices.empty() && ! poolWasEmpty)
+                if (arpLatch && numVoices == 0 && ! poolWasEmpty)
                 {
                     clearArpPool();
                     resetArpPosition();
                 }
-                addToArpPool(chord);
+                addToArpPool(chord, chordSize);
                 arpLastVel = vel;
                 if (poolWasEmpty)
                 {
@@ -739,39 +900,44 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             }
             else
             {
-                for (size_t i = 0; i < chord.size(); ++i)
+                for (int i = 0; i < chordSize; ++i)
                 {
-                    int off = (int) i * strumStep;
-                    if (off == 0) voiceNoteOn(out, pos, chord[i], ch, vel);
-                    else pendingOns.push_back({ sampleClock + pos + off, chord[i], ch, vel });
+                    int off = i * strumStep;
+                    if (off == 0 || numPendingOns >= kMaxPendingOns) voiceNoteOn(out, pos, chord[i], ch, vel);
+                    else pendingOns[numPendingOns++] = { sampleClock + pos + off, chord[i], ch, vel };
                 }
             }
-            voices[inNote] = { snapped, ch, chord };
+            auto& v = voices[inNote];
+            v.active = true; ++numVoices;
+            v.snapped = snapped; v.channel = ch; v.numEmitted = chordSize;
+            std::copy(chord, chord + chordSize, v.emitted);
             lastInputNote.store(inNote); lastSnappedNote.store(snapped);
         }
         else if (msg.isNoteOff())
         {
             int inNote = msg.getNoteNumber();
-            juce::ScopedLock sl(stateLock);
-            auto it = voices.find(inNote);
-            if (it == voices.end()) continue;
-            const int vch = it->second.channel;
+            auto& v = voices[inNote];
+            if (! v.active) return;
+            const int vch = v.channel;
 
             if (arpOn)
             {
                 if (arpLatch)
-                    voices.erase(it); // latch keeps the pool, forget the key
+                    removeVoice(inNote); // latch keeps the pool, forget the key
                 else if (sustainDown)
                 {
-                    auto marker = std::make_pair(-1000 - inNote, vch); // pool removal deferred
-                    if (std::find(deferredOffs.begin(), deferredOffs.end(), marker) == deferredOffs.end())
-                        deferredOffs.push_back(marker);
+                    const Deferred marker { -1000 - inNote, vch }; // pool removal deferred
+                    if (std::find(deferredOffs, deferredOffs + numDeferred, marker) == deferredOffs + numDeferred)
+                    {
+                        if (numDeferred < kMaxDeferred) deferredOffs[numDeferred++] = marker;
+                        else { removeFromArpPool(v.emitted, v.numEmitted); removeVoice(inNote); }
+                    }
                 }
                 else
                 {
-                    removeFromArpPool(it->second.emitted);
-                    voices.erase(it);
-                    if (arpPool.empty() && arpCurrentNote >= 0)
+                    removeFromArpPool(v.emitted, v.numEmitted);
+                    removeVoice(inNote);
+                    if (arpPoolSize == 0 && arpCurrentNote >= 0)
                     {
                         noteOffOut(out, pos, arpCurrentNote, arpCurrentChannel);
                         arpCurrentNote = -1;
@@ -782,38 +948,37 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             }
             else
             {
-                for (int n : it->second.emitted)
+                for (int k = 0; k < v.numEmitted; ++k)
                 {
-                    if (sustainDown) deferredOffs.emplace_back(n, vch);
-                    else releaseVoiceNote(out, pos, n, vch);
+                    if (sustainDown) addDeferred(out, pos, v.emitted[k], vch);
+                    else releaseVoiceNote(out, pos, v.emitted[k], vch);
                 }
-                voices.erase(it);
+                removeVoice(inNote);
             }
         }
         else if (msg.isSustainPedalOn())
         {
-            juce::ScopedLock sl(stateLock);
             sustainDown = true;
         }
         else if (msg.isSustainPedalOff())
         {
-            juce::ScopedLock sl(stateLock);
             sustainDown = false;
-            for (auto& d : deferredOffs)
+            for (int d = 0; d < numDeferred; ++d)
             {
-                if (d.first <= -1000) // deferred pool removal, input note = -1000 - first
+                const auto& def = deferredOffs[d];
+                if (def.first <= -1000) // deferred pool removal, input note = -1000 - first
                 {
-                    auto it = voices.find(-1000 - d.first);
-                    if (it != voices.end())
+                    int inNote = -1000 - def.first;
+                    if (inNote >= 0 && inNote < 128 && voices[inNote].active)
                     {
-                        if (! arpLatch) removeFromArpPool(it->second.emitted);
-                        voices.erase(it);
+                        if (! arpLatch) removeFromArpPool(voices[inNote].emitted, voices[inNote].numEmitted);
+                        removeVoice(inNote);
                     }
                 }
-                else releaseVoiceNote(out, pos, d.first, d.second);
+                else releaseVoiceNote(out, pos, def.first, def.second);
             }
-            deferredOffs.clear();
-            if (arpOn && arpPool.empty() && arpCurrentNote >= 0)
+            numDeferred = 0;
+            if (arpOn && arpPoolSize == 0 && arpCurrentNote >= 0)
             {
                 noteOffOut(out, pos, arpCurrentNote, arpCurrentChannel);
                 arpCurrentNote = -1;
@@ -823,7 +988,6 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
         }
         else if (msg.isAllNotesOff() || msg.isAllSoundOff())
         {
-            juce::ScopedLock sl(stateLock);
             killAllSound(out);
             resetAllNoteState();
         }
@@ -836,140 +1000,166 @@ void MidiNoteModifierProcessor::processBlock(juce::AudioBuffer<float>& buffer, j
             // thru: CC, pitchbend, aftertouch, program change
             out.addEvent(msg, pos);
         }
+    };
+
+    // Editor keyboard auditions go through the normal path (channel 1) at the
+    // block start, right after any host events stamped at sample 0.
+    auto feedAuditions = [&]
+    {
+        const auto scope = auditionFifo.read(auditionFifo.getNumReady());
+        auto feed = [&](int start, int size)
+        {
+            for (int i = start; i < start + size; ++i)
+            {
+                const auto& a = auditionBuf[i];
+                int note = juce::jlimit(0, 127, a.note);
+                handleMessage(a.on ? juce::MidiMessage::noteOn(1, note, (juce::uint8) juce::jlimit(1, 127, a.vel))
+                                   : juce::MidiMessage::noteOff(1, note), 0);
+            }
+        };
+        feed(scope.startIndex1, scope.blockSize1);
+        feed(scope.startIndex2, scope.blockSize2);
+    };
+
+    bool auditionsFed = false;
+    for (const auto meta : midi)
+    {
+        if (! auditionsFed && meta.samplePosition > 0) { feedAuditions(); auditionsFed = true; }
+        handleMessage(meta.getMessage(), juce::jlimit(0, juce::jmax(0, numSamples - 1), meta.samplePosition));
     }
+    if (! auditionsFed) feedAuditions();
 
     // --- Arp tick generation ---
+    if (arpOn && arpPoolSize > 0)
     {
-        juce::ScopedLock sl(stateLock);
-        if (arpOn && ! arpPool.empty())
+        const double intervalBeats = getRateBeats();
+        const double swingFrac = juce::jlimit(0.0f, 60.0f, swingPct) / 100.0;
+        const double gateFrac = juce::jlimit(0.1f, 1.0f, gatePct / 100.0f);
+        const bool synced = playing && hasPpq;
+        const double bpm = juce::jmax(20.0, synced ? hostBpm : lastHostBpm.load());
+        const double samplesPerBeat = 60.0 / bpm * currentSampleRate;
+        const double tickSamples = intervalBeats * samplesPerBeat;
+        // odd steps are delayed by the swing amount
+        auto swingDelayBeats = [&] { return (arpStepIndex % 2) == 1 ? swingFrac * intervalBeats * 0.5 : 0.0; };
+
+        // One arp step: stop the previous note (at its gate end if that came
+        // first), start the next, and schedule its gate-off, possibly in a
+        // later block. stepLen is the time until the following step.
+        auto fireStep = [&](int sampleOff, int ch, double stepLen)
         {
-            const double intervalBeats = getRateBeats();
-            const double swingFrac = juce::jlimit(0.0f, 60.0f, swingPct) / 100.0;
-            const double gateFrac = juce::jlimit(0.1f, 1.0f, gatePct / 100.0f);
-            const bool synced = playing && hasPpq;
-            const double bpm = juce::jmax(20.0, synced ? hostBpm : lastHostBpm.load());
-            const double samplesPerBeat = 60.0 / bpm * currentSampleRate;
-            const double tickSamples = intervalBeats * samplesPerBeat;
-            // odd steps are delayed by the swing amount
-            auto swingDelayBeats = [&] { return (arpStepIndex % 2) == 1 ? swingFrac * intervalBeats * 0.5 : 0.0; };
-
-            // One arp step: stop the previous note (at its gate end if that came
-            // first), start the next, and schedule its gate-off, possibly in a
-            // later block. stepLen is the time until the following step.
-            auto fireStep = [&](int sampleOff, int ch, double stepLen)
+            if (arpCurrentNote >= 0)
             {
-                if (arpCurrentNote >= 0)
-                {
-                    int offPos = (gateOffIn >= 0 && gateOffIn <= sampleOff) ? gateOffIn : sampleOff;
-                    noteOffOut(out, offPos, arpCurrentNote, arpCurrentChannel);
-                }
-                arpCurrentNote = -1;
-                gateOffIn = -1;
-                int n = pickArpNote();
-                if (n >= 0)
-                {
-                    noteOnOut(out, sampleOff, n, ch, arpLastVel);
-                    arpCurrentNote = n;
-                    arpCurrentChannel = ch;
-                    if (gateFrac < 0.98)
-                        gateOffIn = sampleOff + juce::jmax(1, (int) (stepLen * gateFrac));
-                }
-                ++arpStepIndex;
-            };
-
-            if (synced != arpWasSynced)
-            {
-                // transport started: realign to the host grid; stopped: free-run on
-                if (synced) nextPpq = -1.0;
-                else samplesToNextTick = tickSamples;
-                arpWasSynced = synced;
+                int offPos = (gateOffIn >= 0 && gateOffIn <= sampleOff) ? gateOffIn : sampleOff;
+                noteOffOut(out, offPos, arpCurrentNote, arpCurrentChannel);
             }
-
-            // First step fires immediately on the triggering note-on: zero trigger latency.
-            if (arpImmediatePending)
+            arpCurrentNote = -1;
+            gateOffIn = -1;
+            int n = pickArpNote();
+            if (n >= 0)
             {
-                arpImmediatePending = false;
-                fireStep(arpImmediatePos, arpImmediateCh, tickSamples);
-                if (synced) nextPpq = ppqPos + arpImmediatePos / samplesPerBeat + intervalBeats;
-                else samplesToNextTick = arpImmediatePos + tickSamples;
+                noteOnOut(out, sampleOff, n, ch, arpLastVel);
+                arpCurrentNote = n;
+                arpCurrentChannel = ch;
+                if (gateFrac < 0.98)
+                    gateOffIn = sampleOff + juce::jmax(1, (int) (stepLen * gateFrac));
             }
+            ++arpStepIndex;
+        };
 
-            int guard = 0;
-            if (synced)
-            {
-                const double blockEndPpq = ppqPos + numSamples / samplesPerBeat;
-                // first run, loop/jump backwards, or a stale schedule far behind: snap to the grid
-                if (nextPpq < 0.0 || nextPpq < ppqPos - intervalBeats * 0.5
-                    || nextPpq > blockEndPpq + intervalBeats)
-                    nextPpq = std::ceil(ppqPos / intervalBeats - 1.0e-9) * intervalBeats;
+        if (synced != arpWasSynced)
+        {
+            // transport started: realign to the host grid; stopped: free-run on
+            if (synced) nextPpq = -1.0;
+            else samplesToNextTick = tickSamples;
+            arpWasSynced = synced;
+        }
 
-                while (guard++ < 64)
-                {
-                    double swing = swingDelayBeats();
-                    double at = nextPpq + swing;
-                    if (at >= blockEndPpq) break;
-                    int sampleOff = juce::jlimit(0, numSamples - 1, (int) ((at - ppqPos) * samplesPerBeat));
-                    fireStep(sampleOff, arpCurrentChannel, (intervalBeats - swing) * samplesPerBeat);
-                    nextPpq += intervalBeats;
-                }
-            }
-            else
-            {
-                // Free-run on the last DAW tempo while the transport is stopped.
-                if (samplesToNextTick < 0.0) samplesToNextTick = 0.0;
-                while (guard++ < 64)
-                {
-                    double swing = swingDelayBeats() * samplesPerBeat;
-                    double at = samplesToNextTick + swing;
-                    if (at >= numSamples) break;
-                    fireStep(juce::jlimit(0, numSamples - 1, (int) at), arpCurrentChannel, tickSamples - swing);
-                    samplesToNextTick += tickSamples;
-                }
-                samplesToNextTick -= numSamples;
-            }
+        // First step fires immediately on the triggering note-on: zero trigger latency.
+        if (arpImmediatePending)
+        {
+            arpImmediatePending = false;
+            fireStep(arpImmediatePos, arpImmediateCh, tickSamples);
+            if (synced) nextPpq = ppqPos + arpImmediatePos / samplesPerBeat + intervalBeats;
+            else samplesToNextTick = arpImmediatePos + tickSamples;
+        }
 
-            // gate-off due in this block, or carry it into the next one
-            if (gateOffIn >= 0 && arpCurrentNote >= 0)
+        int guard = 0;
+        if (synced)
+        {
+            const double blockEndPpq = ppqPos + numSamples / samplesPerBeat;
+            // first run, loop/jump backwards, or a stale schedule far behind: snap to the grid
+            if (nextPpq < 0.0 || nextPpq < ppqPos - intervalBeats * 0.5
+                || nextPpq > blockEndPpq + intervalBeats)
+                nextPpq = std::ceil(ppqPos / intervalBeats - 1.0e-9) * intervalBeats;
+
+            while (guard++ < 64)
             {
-                if (gateOffIn < numSamples)
-                {
-                    noteOffOut(out, gateOffIn, arpCurrentNote, arpCurrentChannel);
-                    arpCurrentNote = -1;
-                    gateOffIn = -1;
-                }
-                else gateOffIn -= numSamples;
+                double swing = swingDelayBeats();
+                double at = nextPpq + swing;
+                if (at >= blockEndPpq) break;
+                int sampleOff = juce::jlimit(0, numSamples - 1, (int) ((at - ppqPos) * samplesPerBeat));
+                fireStep(sampleOff, arpCurrentChannel, (intervalBeats - swing) * samplesPerBeat);
+                nextPpq += intervalBeats;
             }
         }
         else
         {
-            arpImmediatePending = false;
-            if (arpCurrentNote >= 0)
+            // Free-run on the last DAW tempo while the transport is stopped.
+            if (samplesToNextTick < 0.0) samplesToNextTick = 0.0;
+            while (guard++ < 64)
             {
-                noteOffOut(out, 0, arpCurrentNote, arpCurrentChannel);
-                arpCurrentNote = -1;
+                double swing = swingDelayBeats() * samplesPerBeat;
+                double at = samplesToNextTick + swing;
+                if (at >= numSamples) break;
+                fireStep(juce::jlimit(0, numSamples - 1, (int) at), arpCurrentChannel, tickSamples - swing);
+                samplesToNextTick += tickSamples;
             }
-            gateOffIn = -1;
-            nextPpq = -1.0;
+            samplesToNextTick -= numSamples;
         }
 
-        // strummed chord notes that are due within this block
-        const auto blockEnd = sampleClock + numSamples;
-        for (auto it = pendingOns.begin(); it != pendingOns.end();)
+        // gate-off due in this block, or carry it into the next one
+        if (gateOffIn >= 0 && arpCurrentNote >= 0)
         {
-            if (it->time < blockEnd)
+            if (gateOffIn < numSamples)
             {
-                voiceNoteOn(out, (int) juce::jmax((juce::int64) 0, it->time - sampleClock),
-                            it->note, it->channel, it->vel);
-                it = pendingOns.erase(it);
+                noteOffOut(out, gateOffIn, arpCurrentNote, arpCurrentChannel);
+                arpCurrentNote = -1;
+                gateOffIn = -1;
             }
-            else ++it;
+            else gateOffIn -= numSamples;
         }
-        sampleClock = blockEnd;
-
-        activeVoices.store((int) voices.size() + (arpOn && arpCurrentNote >= 0 ? 1 : 0));
+    }
+    else
+    {
+        arpImmediatePending = false;
+        if (arpCurrentNote >= 0)
+        {
+            noteOffOut(out, 0, arpCurrentNote, arpCurrentChannel);
+            arpCurrentNote = -1;
+        }
+        gateOffIn = -1;
+        nextPpq = -1.0;
     }
 
-    midi.swapWith(out);
+    // strummed chord notes that are due within this block
+    const auto blockEnd = sampleClock + numSamples;
+    int keep = 0;
+    for (int i = 0; i < numPendingOns; ++i)
+    {
+        const auto& po = pendingOns[i];
+        if (po.time < blockEnd)
+            voiceNoteOn(out, (int) juce::jmax((juce::int64) 0, po.time - sampleClock),
+                        po.note, po.channel, po.vel);
+        else pendingOns[keep++] = po;
+    }
+    numPendingOns = keep;
+    sampleClock = blockEnd;
+
+    activeVoices.store(numVoices + (arpOn && arpCurrentNote >= 0 ? 1 : 0));
+
+    // copy rather than swap, so outBuffer keeps its reserved storage
+    midi.clear();
+    midi.addEvents(out, 0, -1, 0);
 }
 
 void MidiNoteModifierProcessor::getStateInformation(juce::MemoryBlock& destData)
@@ -986,6 +1176,7 @@ void MidiNoteModifierProcessor::setStateInformation(const void* data, int sizeIn
     {
         apvts.replaceState(juce::ValueTree::fromXml(*xml));
         loadCustomChordTypesFromState();
+        ++stateVersion; // open editors rebuild scale list / chord names / designer
     }
 }
 

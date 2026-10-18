@@ -5,6 +5,8 @@
 // Colour themes: same dark-grey shell, swappable accent triple (light/mid/dark).
 struct AppTheme { const char* name; uint32_t light, mid, dark; };
 
+// One Theme per editor (owned by its look-and-feel), so each plugin instance
+// keeps its own colour scheme instead of sharing a global one.
 class Theme
 {
 public:
@@ -20,12 +22,12 @@ public:
         return t;
     }
     static int count() { return (int) all().size(); }
-    static void set(int i) { current = juce::jlimit(0, count() - 1, i); }
-    static int get() { return current; }
-    static juce::Colour light() { return juce::Colour(all()[(size_t) get()].light); }
-    static juce::Colour mid()   { return juce::Colour(all()[(size_t) get()].mid); }
-    static juce::Colour dark()  { return juce::Colour(all()[(size_t) get()].dark); }
+    void set(int i) { current = juce::jlimit(0, count() - 1, i); }
+    int get() const { return current; }
+    juce::Colour light() const { return juce::Colour(all()[(size_t) get()].light); }
+    juce::Colour mid() const   { return juce::Colour(all()[(size_t) get()].mid); }
+    juce::Colour dark() const  { return juce::Colour(all()[(size_t) get()].dark); }
 
 private:
-    inline static int current = 0;
+    int current = 0;
 };

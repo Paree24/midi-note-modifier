@@ -52,34 +52,35 @@ public:
 
     void setTheme(int i)
     {
-        Theme::set(i);
+        theme.set(i);
         applyThemeColours();
     }
 
     void applyThemeColours()
     {
         // accent-driven roles follow the active theme
-        setColour(juce::TextButton::buttonOnColourId, Theme::mid());
-        setColour(juce::ComboBox::arrowColourId, Theme::light());
-        setColour(juce::ComboBox::focusedOutlineColourId, Theme::light());
-        setColour(juce::ComboBox::buttonColourId, Theme::light());
-        setColour(juce::PopupMenu::highlightedBackgroundColourId, Theme::dark());
-        setColour(juce::PopupMenu::headerTextColourId, Theme::light());
-        setColour(juce::Slider::textBoxHighlightColourId, Theme::dark());
-        setColour(juce::TextEditor::focusedOutlineColourId, Theme::light());
-        setColour(juce::TextEditor::highlightColourId, Theme::dark());
-        setColour(juce::CaretComponent::caretColourId, Theme::light());
-        setColour(juce::TooltipWindow::outlineColourId, Theme::dark());
-        setColour(juce::BubbleComponent::outlineColourId, Theme::dark());
+        setColour(juce::TextButton::buttonOnColourId, theme.mid());
+        setColour(juce::ComboBox::arrowColourId, theme.light());
+        setColour(juce::ComboBox::focusedOutlineColourId, theme.light());
+        setColour(juce::ComboBox::buttonColourId, theme.light());
+        setColour(juce::PopupMenu::highlightedBackgroundColourId, theme.dark());
+        setColour(juce::PopupMenu::headerTextColourId, theme.light());
+        setColour(juce::Slider::textBoxHighlightColourId, theme.dark());
+        setColour(juce::TextEditor::focusedOutlineColourId, theme.light());
+        setColour(juce::TextEditor::highlightColourId, theme.dark());
+        setColour(juce::CaretComponent::caretColourId, theme.light());
+        setColour(juce::TooltipWindow::outlineColourId, theme.dark());
+        setColour(juce::BubbleComponent::outlineColourId, theme.dark());
     }
 
-    static juce::Colour accent()      { return Theme::mid(); }
-    static juce::Colour accentHi()    { return Theme::light(); }
-    static juce::Colour accentDeep()  { return Theme::dark(); }
+    juce::Colour accent() const      { return theme.mid(); }
+    juce::Colour accentHi() const    { return theme.light(); }
+    juce::Colour accentDeep() const  { return theme.dark(); }
     static juce::Colour panel()       { return juce::Colour(0xFF222228); }
     static juce::Colour panelEdge()   { return juce::Colour(0xFF45454E); }
     static juce::Colour trackGrey()   { return juce::Colour(0xFF3C3C45); }
 
+    Theme theme; // per-instance accent theme
     juce::Typeface::Ptr latoRegular, latoBold;
 
     juce::Typeface::Ptr getTypefaceForFont(const juce::Font&) override

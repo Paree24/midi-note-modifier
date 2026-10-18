@@ -30,6 +30,8 @@ juce_add_plugin(MidiNoteModifier
 target_sources(MidiNoteModifier PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/PresetBrowser.cpp
+    Source/SetupPresets.cpp
 )
 
 target_compile_definitions(MidiNoteModifier PRIVATE
@@ -63,6 +65,8 @@ add_executable(UiShot EXCLUDE_FROM_ALL
     UiShot.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/PresetBrowser.cpp
+    Source/SetupPresets.cpp
 )
 target_compile_definitions(UiShot PRIVATE
     JUCE_WEB_BROWSER=0
@@ -78,3 +82,20 @@ target_link_libraries(UiShot PRIVATE
     juce::juce_events
     juce::juce_recommended_config_flags
 )
+
+# HostCheck: loads the built .vst3 through JUCE's VST3 hosting, like a DAW (dev only)
+#   cmake --build build --target HostCheck
+#   ./build/HostCheck "build/MidiNoteModifier_artefacts/Release/VST3/Midi Note Modifier.vst3"
+add_executable(HostCheck EXCLUDE_FROM_ALL HostCheck.cpp)
+target_compile_definitions(HostCheck PRIVATE
+    JUCE_PLUGINHOST_VST3=1
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_STANDALONE_APPLICATION=1
+)
+target_link_libraries(HostCheck PRIVATE
+    juce::juce_audio_processors
+    juce::juce_gui_basics
+    juce::juce_recommended_config_flags
+)
+add_dependencies(HostCheck MidiNoteModifier_VST3)

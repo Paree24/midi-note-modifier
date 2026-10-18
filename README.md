@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/Paree24/midi-note-modifier/actions/workflows/build.yml/badge.svg)](https://github.com/Paree24/midi-note-modifier/actions/workflows/build.yml)
 
-JUCE MIDI-FX plugin built from `PRD.md`: sits before an instrument and applies
+JUCE MIDI-FX plugin: sits before an instrument and applies
 **Scale snap → Chord → Arp**, with sustain/latch handling, panic, and DAW-synced arp.
 Dark grey UI with swappable accent themes (Purple #D0ACFF/#6228AD/#3F226E,
 Ember, Teal, Neon Pink, Sky Blue — header selector; the last-used theme is
@@ -77,13 +77,25 @@ Notes:
   for the Standalone. Distributing outside the App Store requires signing
   and notarizing with an Apple Developer ID (`codesign`, `notarytool`).
 
+### Checks (Linux CI runs both)
+
+```bash
+cmake --build build --target UiShot HostCheck
+./build/UiShot      # MIDI behaviour, undo, setups, no-allocation check + UI screenshot
+./build/HostCheck "build/MidiNoteModifier_artefacts/Release/VST3/Midi Note Modifier.vst3"
+```
+
+`HostCheck` loads the built VST3 through JUCE's plugin hosting like a DAW
+would: MIDI in/out, sample-accurate note timing, host parameter changes,
+state round trip and the editor.
+
 ## Use
 
 Insert on a MIDI track **before** the instrument. No audio I/O — MIDI in → MIDI out.
 The arp's first step fires immediately on note-on (no trigger latency) at the
 played velocity; timing after that follows the DAW transport.
 
-- **Scale:** Root (C–B), 64 scales copied from a common controller
+- **Scale:** Root (C–B), 64 factory scales (a common controller scale library)
   `example_config.toml` pad pages (Chromatic, Major, modes, Harmonic/Minor
   variants, pentatonics, blues, Double Harmonic, Neapolitans, Hungarians,
   Persian, Ukrainian Dorian, Hirajoshi, In Sen, Iwato, Kumoi, Yo, Egyptian,
@@ -96,11 +108,13 @@ played velocity; timing after that follows the DAW transport.
   play consecutive scale degrees 1–7 of the current scale + root, wrapping
   across octaves (e.g. C D E F G A B becomes C D# F F# G A# C for C minor
   blues). Black keys snap to the nearest white key first.
-- **Keyboard:** one octave (C4–C5) with note names. In-scale keys glow purple;
-  played notes light up. Click = audition. Shift-click (or Edit mode) toggles
+- **Keyboard:** one octave (C4–C5) with note names. In-scale keys glow
+  purple; played notes light up. Click (or drag across keys) = audition. Shift-click (or Edit mode) toggles
   that pitch class in the scale. The 12 C–B pills always mirror the current
   scale — clicking one adopts it as Custom and toggles that pitch class;
-  **Save** stores the pattern under your name straight into the Scale menu.
+  **Save** stores the pattern under your name straight into the Scale menu
+  (names of factory scales and "Custom" are refused); **Delete** removes the
+  selected user scale.
 - **Chords:** big On switch, one input note → chord. Each scale degree defaults
   to its **diatonic triad** — or to a **power chord** for the pentatonic/blues/
   japanese/etc. scales, matching the usual power-chord defaults for those scales — and can be
@@ -121,6 +135,13 @@ played velocity; timing after that follows the DAW transport.
 - **Knobs:** drag to change (value bubble while dragging), **double-click to
   type an exact value**. The window is resizable (corner drag).
 - **Panic** button: all-notes-off, clears voices/latch/sustain.
+- **Setups:** the button under the title opens the setup browser: whole
+  scale + chords + arp configurations (factory setups plus your own, saved as
+  XML in `Documents/Midi Note Modifier Presets`). Click a row to load it;
+  the colour theme, your user scales stay as they are.
+- **Undo / Redo** (header, or Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z): every knob,
+  menu or switch change is one step, as are scale/chord edits and setup loads.
+  The theme is per instance and never part of the history.
 
 Sustain pedal (CC64) defers note-offs; note-offs always match what was emitted;
 changing scale/chords mid-hold only affects new notes.

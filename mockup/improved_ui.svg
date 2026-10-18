@@ -1,0 +1,368 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="800" viewBox="0 0 960 800" font-family="Lato, 'Lato Bold', sans-serif">
+<title>Midi Note Modifier - improved UI mockup</title>
+<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter></defs>
+<rect width="960" height="800" fill="#161619"/>
+<g id="header">
+<text x="28.0" y="31.0" font-size="20" fill="#F2F0F5" text-anchor="start" font-weight="700" >Midi Note Modifier</text>
+<text x="28.0" y="49.0" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Scale</text>
+<text x="69.0" y="49.0" font-size="13" fill="#D0ACFF" text-anchor="start" font-weight="700" >›</text>
+<text x="80.0" y="49.0" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Chords</text>
+<text x="132.0" y="49.0" font-size="13" fill="#D0ACFF" text-anchor="start" font-weight="700" >›</text>
+<text x="143.0" y="49.0" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Arp</text>
+<rect x="452.0" y="14.0" width="104.0" height="32.0" rx="8" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="466.0" y="34.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" >IN</text>
+<circle cx="490" cy="30" r="7" fill="#6228AD" fill-opacity="0.35"/>
+<circle cx="490" cy="30" r="4" fill="#D0ACFF"/>
+<text x="506.0" y="34.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" >OUT</text>
+<circle cx="540" cy="30" r="7" fill="#6228AD" fill-opacity="0.35"/>
+<circle cx="540" cy="30" r="4" fill="#D0ACFF"/>
+<rect x="564.0" y="14.0" width="130.0" height="32.0" rx="8" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<path d="M580,24 L590,30 L580,36 Z" fill="#D0ACFF"/>
+<text x="600.0" y="34.5" font-size="13" fill="#D0ACFF" text-anchor="start" font-weight="700" >120.0 BPM</text>
+<rect x="703.0" y="15.0" width="130.0" height="30.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="761.0" y="34.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Purple</text>
+<path d="M809,28.0 L819,28.0 L814,33.5 Z" fill="#D0ACFF"/>
+<circle cx="716" cy="30" r="5" fill="#D0ACFF"/>
+<rect x="849.0" y="15.0" width="82.0" height="30.0" rx="8" fill="#E5484D" stroke="#45454E" stroke-width="1" />
+<text x="890.0" y="34.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >Panic</text>
+</g>
+<g id="scale-panel">
+<rect x="12.5" y="60.5" width="935.0" height="275.0" rx="12" fill="#222228" stroke="#45454E" stroke-width="1" />
+<g id="scale-header">
+<circle cx="38" cy="85" r="10" fill="#3F226E" stroke="#D0ACFF" stroke-width="1"/>
+<text x="38.0" y="89.5" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >1</text>
+<text x="56.0" y="91.0" font-size="17" fill="#F2F0F5" text-anchor="start" font-weight="700" >Scale</text>
+<rect x="176.0" y="71.0" width="49.6" height="28.0" rx="14.0" fill="none" stroke="#6228AD" stroke-width="2" stroke-opacity="0.35"/>
+<rect x="178.0" y="73.0" width="45.6" height="24.0" rx="12.0" fill="#3F226E" />
+<circle cx="211.6" cy="85" r="9.0" fill="#FFFFFF"/>
+<text x="231.6" y="89.5" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >Lock</text>
+<text x="290.0" y="89.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Root</text>
+<rect x="325.0" y="73.0" width="68.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="352.0" y="89.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >F</text>
+<path d="M369,83.0 L379,83.0 L374,88.5 Z" fill="#D0ACFF"/>
+<text x="410.0" y="89.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Scale</text>
+<rect x="449.0" y="73.0" width="312.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="598.0" y="89.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Harmonic Minor</text>
+<path d="M737,83.0 L747,83.0 L742,88.5 Z" fill="#D0ACFF"/>
+<text x="778.0" y="89.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Snap</text>
+<rect x="815.0" y="73.0" width="116.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="866.0" y="89.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Nearest</text>
+<path d="M907,83.0 L917,83.0 L912,88.5 Z" fill="#D0ACFF"/>
+</g>
+<g id="pitch-class-pills">
+<rect x="29.0" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="62.9" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >C</text>
+<rect x="104.8" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="138.8" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >C#</text>
+<rect x="180.7" y="107.0" width="67.8" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="214.6" y="123.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >D</text>
+<rect x="256.5" y="107.0" width="67.8" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="290.4" y="123.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >D#</text>
+<rect x="332.3" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="366.2" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >E</text>
+<rect x="408.2" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="442.1" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >F</text>
+<rect x="405.7" y="104.5" width="72.8" height="29.0" rx="9.5" fill="none" stroke="#FFFFFF" stroke-width="1.5" />
+<circle cx="468.0" cy="114" r="3" fill="#FFFFFF"/>
+<rect x="484.0" y="107.0" width="67.8" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="517.9" y="123.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >F#</text>
+<rect x="559.8" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="593.7" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >G</text>
+<rect x="635.7" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="669.6" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >G#</text>
+<rect x="711.5" y="107.0" width="67.8" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="745.4" y="123.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >A</text>
+<rect x="787.3" y="107.0" width="67.8" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="821.2" y="123.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >A#</text>
+<rect x="863.2" y="107.0" width="67.8" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="897.1" y="123.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >B</text>
+</g>
+<g id="custom-scale-row">
+<rect x="28.0" y="141.0" width="45.6" height="24.0" rx="12.0" fill="#3C3C45" />
+<circle cx="40.0" cy="153" r="9.0" fill="#9C9CA8"/>
+<text x="81.6" y="157.5" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >White Keys</text>
+<rect x="188.0" y="141.0" width="45.6" height="24.0" rx="12.0" fill="#3C3C45" />
+<circle cx="200.0" cy="153" r="9.0" fill="#9C9CA8"/>
+<text x="241.6" y="157.5" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Edit Keys</text>
+<rect x="306.0" y="141.0" width="528.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="318.0" y="157.5" font-size="13" fill="#8E8E9A" text-anchor="start" font-weight="700" >Save current pattern as…</text>
+<rect x="843.0" y="141.0" width="88.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="887.0" y="157.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >Save Scale</text>
+</g>
+<g id="keyboard">
+<rect x="29.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#D0ACFF" stroke="#1E1E23" stroke-width="1.5" />
+<text x="65.5" y="298.0" font-size="13" fill="#2A2633" text-anchor="middle" font-weight="700" >C4</text>
+<text x="65.5" y="278.0" font-size="11" fill="#3F226E" text-anchor="middle" font-weight="700" >5</text>
+<rect x="104.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#3A3A42" stroke="#1E1E23" stroke-width="1.5" />
+<text x="140.5" y="298.0" font-size="13" fill="#B4B4C0" text-anchor="middle" font-weight="700" >D4</text>
+<rect x="179.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#D0ACFF" stroke="#1E1E23" stroke-width="1.5" />
+<text x="215.5" y="298.0" font-size="13" fill="#2A2633" text-anchor="middle" font-weight="700" >E4</text>
+<text x="215.5" y="278.0" font-size="11" fill="#3F226E" text-anchor="middle" font-weight="700" >7</text>
+<rect x="254.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#D0ACFF" stroke="#1E1E23" stroke-width="1.5" />
+<text x="290.5" y="298.0" font-size="13" fill="#2A2633" text-anchor="middle" font-weight="700" >F4</text>
+<circle cx="290.5" cy="274" r="9" fill="#6228AD"/>
+<text x="290.5" y="278.0" font-size="11" fill="#FFFFFF" text-anchor="middle" font-weight="700" >1</text>
+<rect x="329.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#D0ACFF" stroke="#1E1E23" stroke-width="1.5" />
+<text x="365.5" y="298.0" font-size="13" fill="#2A2633" text-anchor="middle" font-weight="700" >G4</text>
+<text x="365.5" y="278.0" font-size="11" fill="#3F226E" text-anchor="middle" font-weight="700" >2</text>
+<rect x="404.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#3A3A42" stroke="#1E1E23" stroke-width="1.5" />
+<text x="440.5" y="298.0" font-size="13" fill="#B4B4C0" text-anchor="middle" font-weight="700" >A4</text>
+<rect x="408.5" y="265.1" width="64.0" height="20.0" rx="6" fill="none" stroke="#D0ACFF" stroke-width="1.5" stroke-dasharray="3 2"/>
+<text x="440.5" y="279.1" font-size="11" fill="#D0ACFF" text-anchor="middle" font-weight="700" >IN</text>
+<rect x="479.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#3A3A42" stroke="#1E1E23" stroke-width="1.5" />
+<text x="515.5" y="298.0" font-size="13" fill="#B4B4C0" text-anchor="middle" font-weight="700" >B4</text>
+<rect x="551.5" y="173.0" width="78.0" height="140.0" rx="8" fill="#6228AD" fill-opacity="0.3"/>
+<rect x="554.5" y="176.0" width="72.0" height="134.0" rx="6" fill="#FFFFFF" stroke="#1E1E23" stroke-width="1.5" />
+<text x="590.5" y="298.0" font-size="13" fill="#2A2633" text-anchor="middle" font-weight="700" >C5</text>
+<text x="590.5" y="278.0" font-size="11" fill="#3F226E" text-anchor="middle" font-weight="700" >5</text>
+<rect x="80.5" y="176.0" width="45.0" height="83.1" rx="6" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.2" />
+<text x="103.0" y="249.1" font-size="11" fill="#D0ACFF" text-anchor="middle" font-weight="700" >6</text>
+<rect x="155.5" y="176.0" width="45.0" height="83.1" rx="6" fill="#1E1E23" stroke="#45454E" stroke-width="1.2" />
+<rect x="305.5" y="176.0" width="45.0" height="83.1" rx="6" fill="#1E1E23" stroke="#45454E" stroke-width="1.2" />
+<rect x="377.5" y="173.0" width="51.0" height="89.1" rx="8" fill="#6228AD" fill-opacity="0.35"/>
+<rect x="380.5" y="176.0" width="45.0" height="83.1" rx="6" fill="#D0ACFF" stroke="#D0ACFF" stroke-width="1.2" />
+<text x="403.0" y="249.1" font-size="11" fill="#3F226E" text-anchor="middle" font-weight="700" >3</text>
+<rect x="455.5" y="176.0" width="45.0" height="83.1" rx="6" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.2" />
+<text x="478.0" y="249.1" font-size="11" fill="#D0ACFF" text-anchor="middle" font-weight="700" >4</text>
+<text x="28.0" y="324.0" font-size="11" fill="#8E8E9A" text-anchor="start" font-weight="700" >Click to audition  ·  Shift-click or Edit Keys to toggle a pitch in the scale</text>
+</g>
+<g id="note-flow">
+<rect x="644.5" y="176.5" width="287.0" height="153.0" rx="10" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="658.0" y="198.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >Note Flow</text>
+<text x="918.0" y="198.0" font-size="11" fill="#8E8E9A" text-anchor="end" font-weight="700" >last event</text>
+<text x="658.0" y="224.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">In</text>
+<rect x="708.0" y="210.0" width="40.0" height="20.0" rx="6" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="728.0" y="224.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >A4</text>
+<path d="M674,231 L674,239" stroke="#45454E" stroke-width="1.5"/>
+<text x="658.0" y="256.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Scale</text>
+<rect x="708.0" y="242.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="728.0" y="256.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >G#4</text>
+<text x="918.0" y="256.5" font-size="12" fill="#D0ACFF" text-anchor="end" font-weight="700" >Nearest</text>
+<path d="M674,263 L674,271" stroke="#45454E" stroke-width="1.5"/>
+<text x="658.0" y="288.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Chord</text>
+<rect x="708.0" y="274.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="728.0" y="288.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >G#4</text>
+<rect x="752.0" y="274.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="772.0" y="288.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >C5</text>
+<rect x="796.0" y="274.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="816.0" y="288.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >E5</text>
+<text x="918.0" y="288.5" font-size="12" fill="#D0ACFF" text-anchor="end" font-weight="700" >III+  Aug</text>
+<path d="M674,295 L674,303" stroke="#45454E" stroke-width="1.5"/>
+<text x="658.0" y="320.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Arp</text>
+<rect x="708.0" y="306.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="728.0" y="320.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >G#4</text>
+<rect x="752.0" y="306.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="772.0" y="320.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >C5</text>
+<rect x="796.0" y="306.0" width="40.0" height="20.0" rx="6" fill="#3F226E" stroke="#D0ACFF" stroke-width="1" />
+<text x="816.0" y="320.0" font-size="12" fill="#F2F0F5" text-anchor="middle" font-weight="700" >E5</text>
+<text x="918.0" y="320.5" font-size="12" fill="#D0ACFF" text-anchor="end" font-weight="700" >Up · 1/16</text>
+</g>
+</g>
+<g id="chord-panel">
+<rect x="12.5" y="344.5" width="935.0" height="279.0" rx="12" fill="#222228" stroke="#45454E" stroke-width="1" />
+<g id="chord-header">
+<circle cx="38" cy="369" r="10" fill="#3F226E" stroke="#D0ACFF" stroke-width="1"/>
+<text x="38.0" y="373.5" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >2</text>
+<text x="56.0" y="375.0" font-size="17" fill="#F2F0F5" text-anchor="start" font-weight="700" >Chords</text>
+<rect x="176.0" y="355.0" width="49.6" height="28.0" rx="14.0" fill="none" stroke="#6228AD" stroke-width="2" stroke-opacity="0.35"/>
+<rect x="178.0" y="357.0" width="45.6" height="24.0" rx="12.0" fill="#3F226E" />
+<circle cx="211.6" cy="369" r="9.0" fill="#FFFFFF"/>
+<text x="231.6" y="373.5" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >On</text>
+<text x="272.0" y="373.5" font-size="12" fill="#8E8E9A" text-anchor="start" font-weight="700" >One input note → chord built on its scale degree</text>
+<rect x="793.0" y="357.0" width="138.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="862.0" y="373.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >Reset Diatonic</text>
+</g>
+<g id="degree-slots">
+<rect x="28.5" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="38.0" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >i</text>
+<text x="140.3" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >F</text>
+<rect x="34.0" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="82.1" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M120.28571428571428,427.0 L130.28571428571428,427.0 L125.28571428571428,432.5 Z" fill="#D0ACFF"/>
+<text x="89.1" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >F min</text>
+<rect x="158.8" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="168.3" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >ii°</text>
+<text x="270.6" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >G</text>
+<rect x="164.3" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="212.4" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M250.57142857142856,427.0 L260.57142857142856,427.0 L255.57142857142856,432.5 Z" fill="#D0ACFF"/>
+<text x="219.4" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >G dim</text>
+<rect x="289.1" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="298.6" y="409.0" font-size="13" fill="#D0ACFF" text-anchor="start" font-weight="700" >III+</text>
+<text x="400.9" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >G#</text>
+<rect x="294.6" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="342.7" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M380.85714285714283,427.0 L390.85714285714283,427.0 L385.85714285714283,432.5 Z" fill="#D0ACFF"/>
+<text x="349.7" y="456.0" font-size="11" fill="#D0ACFF" text-anchor="middle" font-weight="700" >G# aug</text>
+<rect x="419.4" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="428.9" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >iv</text>
+<text x="531.1" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >A#</text>
+<rect x="424.9" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="473.0" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M511.1428571428571,427.0 L521.1428571428571,427.0 L516.1428571428571,432.5 Z" fill="#D0ACFF"/>
+<text x="480.0" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >A# min</text>
+<rect x="549.6" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="559.1" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >V</text>
+<text x="661.4" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >C</text>
+<rect x="555.1" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="603.3" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M641.4285714285714,427.0 L651.4285714285714,427.0 L646.4285714285714,432.5 Z" fill="#D0ACFF"/>
+<text x="610.3" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >C maj</text>
+<rect x="679.9" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="689.4" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >VI</text>
+<text x="791.7" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >C#</text>
+<rect x="685.4" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="733.6" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Major 6th</text>
+<path d="M771.7142857142857,427.0 L781.7142857142857,427.0 L776.7142857142857,432.5 Z" fill="#D0ACFF"/>
+<text x="740.6" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >C# 6</text>
+<rect x="810.2" y="392.5" width="121.3" height="70.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="819.7" y="409.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >vii°</text>
+<text x="922.0" y="409.0" font-size="12" fill="#A7A3B8" text-anchor="end" font-weight="700" >E</text>
+<rect x="815.7" y="417.0" width="110.3" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="863.9" y="433.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Auto</text>
+<path d="M902.0,427.0 L912.0,427.0 L907.0,432.5 Z" fill="#D0ACFF"/>
+<text x="870.9" y="456.0" font-size="11" fill="#8E8E9A" text-anchor="middle" font-weight="700" >E dim</text>
+</g>
+<g id="voicing">
+<rect x="28.5" y="472.5" width="455.0" height="137.0" rx="10" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="40.0" y="493.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >Voicing</text>
+<text x="40.0" y="521.5" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Inversion</text>
+<rect x="107.0" y="505.0" width="90.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="145.0" y="521.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Root</text>
+<path d="M173,515.0 L183,515.0 L178,520.5 Z" fill="#D0ACFF"/>
+<rect x="214.0" y="505.0" width="45.6" height="24.0" rx="12.0" fill="#3C3C45" />
+<circle cx="226.0" cy="517" r="9.0" fill="#9C9CA8"/>
+<text x="267.6" y="521.5" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Lower</text>
+<rect x="40.0" y="539.0" width="45.6" height="24.0" rx="12.0" fill="#3C3C45" />
+<circle cx="52.0" cy="551" r="9.0" fill="#9C9CA8"/>
+<text x="93.6" y="555.5" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Bass -8ve</text>
+<text x="40.0" y="588.0" font-size="11" fill="#8E8E9A" text-anchor="start" font-weight="700" >Lower: same shape, one octave down</text>
+<text x="40.0" y="602.0" font-size="11" fill="#8E8E9A" text-anchor="start" font-weight="700" >Bass -8ve: adds the root an octave below</text>
+<path d="M358,486 L358,596" stroke="#45454E"/>
+<path d="M410.42,552.56 A18.0,18.0 0 1 1 431.58,552.56" fill="none" stroke="#3C3C45" stroke-width="5" stroke-linecap="round"/>
+<path d="M410.42,552.56 A18.0,18.0 0 0 1 405.80,528.36" fill="none" stroke="#6228AD" stroke-width="5" stroke-linecap="round"/>
+<circle cx="421" cy="538" r="9.0" fill="#2B2B32" stroke="#6228AD" stroke-width="1.5"/>
+<rect x="419.25" y="533.0" width="3.5" height="5.0" fill="#D0ACFF" transform="rotate(302.4 421 538)"/>
+<text x="421.0" y="508.0" font-size="12" fill="#A7A3B8" text-anchor="middle" font-weight="700" letter-spacing="0.3">Strum</text>
+<rect x="395.0" y="564.0" width="52.0" height="18.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="421.0" y="577.0" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >12 ms</text>
+</g>
+<g id="custom-chord-designer">
+<rect x="498.5" y="472.5" width="433.0" height="137.0" rx="10" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="510.0" y="493.0" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >Custom Chord Designer</text>
+<text x="920.0" y="493.0" font-size="11" fill="#8E8E9A" text-anchor="end" font-weight="700" >6 slots · appear in every degree menu</text>
+<rect x="511.0" y="505.0" width="90.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="549.0" y="521.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Slot 2</text>
+<path d="M577,515.0 L587,515.0 L582,520.5 Z" fill="#D0ACFF"/>
+<rect x="610.0" y="505.0" width="162.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<rect x="779.0" y="505.0" width="68.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="813.0" y="521.5" font-size="13" fill="#C9C9D2" text-anchor="middle" font-weight="700" >Delete</text>
+<rect x="855.0" y="505.0" width="64.0" height="24.0" rx="8" fill="#6228AD" stroke="#D0ACFF" stroke-width="1.5" />
+<text x="887.0" y="521.5" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="700" >Save</text>
+<text x="622.0" y="521.5" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >Major 6th</text>
+<rect x="511.0" y="539.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="569.3" y="555.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Root</text>
+<path d="M617.6666666666666,549.0 L627.6666666666666,549.0 L622.6666666666666,554.5 Z" fill="#D0ACFF"/>
+<text x="519.0" y="555.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >1</text>
+<rect x="649.7" y="539.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="708.0" y="555.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Major 3rd</text>
+<path d="M756.3333333333333,549.0 L766.3333333333333,549.0 L761.3333333333333,554.5 Z" fill="#D0ACFF"/>
+<text x="657.7" y="555.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >2</text>
+<rect x="788.3" y="539.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="846.7" y="555.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Perfect 5th</text>
+<path d="M894.9999999999999,549.0 L904.9999999999999,549.0 L899.9999999999999,554.5 Z" fill="#D0ACFF"/>
+<text x="796.3" y="555.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >3</text>
+<rect x="511.0" y="571.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="569.3" y="587.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Major 6th</text>
+<path d="M617.6666666666666,581.0 L627.6666666666666,581.0 L622.6666666666666,586.5 Z" fill="#D0ACFF"/>
+<text x="519.0" y="587.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >4</text>
+<rect x="649.7" y="571.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="708.0" y="587.5" font-size="13" fill="#8E8E9A" text-anchor="middle" font-weight="700" >--</text>
+<path d="M756.3333333333333,581.0 L766.3333333333333,581.0 L761.3333333333333,586.5 Z" fill="#D0ACFF"/>
+<text x="657.7" y="587.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >5</text>
+<rect x="788.3" y="571.0" width="130.7" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="846.7" y="587.5" font-size="13" fill="#8E8E9A" text-anchor="middle" font-weight="700" >--</text>
+<path d="M894.9999999999999,581.0 L904.9999999999999,581.0 L899.9999999999999,586.5 Z" fill="#D0ACFF"/>
+<text x="796.3" y="587.0" font-size="10" fill="#8E8E9A" text-anchor="start" font-weight="700" >6</text>
+</g>
+</g>
+<g id="arp-panel">
+<rect x="12.5" y="632.5" width="935.0" height="139.0" rx="12" fill="#222228" stroke="#45454E" stroke-width="1" />
+<g id="arp-header">
+<circle cx="38" cy="657" r="10" fill="#3F226E" stroke="#D0ACFF" stroke-width="1"/>
+<text x="38.0" y="661.5" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >3</text>
+<text x="56.0" y="663.0" font-size="17" fill="#F2F0F5" text-anchor="start" font-weight="700" >Arpeggiator</text>
+<rect x="176.0" y="643.0" width="49.6" height="28.0" rx="14.0" fill="none" stroke="#6228AD" stroke-width="2" stroke-opacity="0.35"/>
+<rect x="178.0" y="645.0" width="45.6" height="24.0" rx="12.0" fill="#3F226E" />
+<circle cx="211.6" cy="657" r="9.0" fill="#FFFFFF"/>
+<text x="231.6" y="661.5" font-size="13" fill="#F2F0F5" text-anchor="start" font-weight="700" >On</text>
+<rect x="270.0" y="645.0" width="45.6" height="24.0" rx="12.0" fill="#3C3C45" />
+<circle cx="282.0" cy="657" r="9.0" fill="#9C9CA8"/>
+<text x="323.6" y="661.5" font-size="13" fill="#A7A3B8" text-anchor="start" font-weight="700" >Latch</text>
+<text x="390.0" y="661.5" font-size="12" fill="#8E8E9A" text-anchor="start" font-weight="700" >Synced to host transport</text>
+</g>
+<g id="arp-controls">
+<text x="28.0" y="692.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Direction</text>
+<rect x="29.0" y="703.0" width="114.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="79.0" y="719.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >Up</text>
+<path d="M119,713.0 L129,713.0 L124,718.5 Z" fill="#D0ACFF"/>
+<text x="158.0" y="692.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Rate</text>
+<rect x="159.0" y="703.0" width="114.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="209.0" y="719.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >1/16</text>
+<path d="M249,713.0 L259,713.0 L254,718.5 Z" fill="#D0ACFF"/>
+<text x="288.0" y="692.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" letter-spacing="0.3">Octaves</text>
+<rect x="289.0" y="703.0" width="78.0" height="24.0" rx="8" fill="#2B2B32" stroke="#45454E" stroke-width="1" />
+<text x="321.0" y="719.5" font-size="13" fill="#F2F0F5" text-anchor="middle" font-weight="700" >1</text>
+<path d="M343,713.0 L353,713.0 L348,718.5 Z" fill="#D0ACFF"/>
+<path d="M403.42,736.56 A18.0,18.0 0 1 1 424.58,736.56" fill="none" stroke="#3C3C45" stroke-width="5" stroke-linecap="round"/>
+<path d="M403.42,736.56 A18.0,18.0 0 0 1 400.62,709.96" fill="none" stroke="#6228AD" stroke-width="5" stroke-linecap="round"/>
+<circle cx="414" cy="722" r="9.0" fill="#2B2B32" stroke="#6228AD" stroke-width="1.5"/>
+<rect x="412.25" y="717.0" width="3.5" height="5.0" fill="#D0ACFF" transform="rotate(312.0 414 722)"/>
+<text x="414.0" y="692.0" font-size="12" fill="#A7A3B8" text-anchor="middle" font-weight="700" letter-spacing="0.3">Swing</text>
+<rect x="388.0" y="748.0" width="52.0" height="18.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="414.0" y="761.0" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >20 %</text>
+<path d="M473.42,736.56 A18.0,18.0 0 1 1 494.58,736.56" fill="none" stroke="#3C3C45" stroke-width="5" stroke-linecap="round"/>
+<path d="M473.42,736.56 A18.0,18.0 0 1 1 500.69,728.74" fill="none" stroke="#6228AD" stroke-width="5" stroke-linecap="round"/>
+<circle cx="484" cy="722" r="9.0" fill="#2B2B32" stroke="#6228AD" stroke-width="1.5"/>
+<rect x="482.25" y="717.0" width="3.5" height="5.0" fill="#D0ACFF" transform="rotate(472.0 484 722)"/>
+<text x="484.0" y="692.0" font-size="12" fill="#A7A3B8" text-anchor="middle" font-weight="700" letter-spacing="0.3">Gate</text>
+<rect x="458.0" y="748.0" width="52.0" height="18.0" rx="9" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="484.0" y="761.0" font-size="12" fill="#D0ACFF" text-anchor="middle" font-weight="700" >90 %</text>
+</g>
+<g id="arp-preview">
+<rect x="538.5" y="676.5" width="393.0" height="83.0" rx="10" fill="#1B1B20" stroke="#45454E" stroke-width="1" />
+<text x="550.0" y="694.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" >Pattern</text>
+<text x="920.0" y="694.0" font-size="11" fill="#8E8E9A" text-anchor="end" font-weight="700" >G#4 C5 E5  ·  Up  ·  1 oct</text>
+<line x1="550" y1="711.6" x2="920" y2="711.6" stroke="#2B2B32" stroke-width="1"/>
+<line x1="550" y1="726.9" x2="920" y2="726.9" stroke="#2B2B32" stroke-width="1"/>
+<line x1="550" y1="742.2" x2="920" y2="742.2" stroke="#2B2B32" stroke-width="1"/>
+<line x1="550.0" y1="704" x2="550.0" y2="750" stroke="#3C3C45" stroke-width="1"/>
+<line x1="596.2" y1="704" x2="596.2" y2="750" stroke="#26262D" stroke-width="1"/>
+<line x1="642.5" y1="704" x2="642.5" y2="750" stroke="#26262D" stroke-width="1"/>
+<line x1="688.8" y1="704" x2="688.8" y2="750" stroke="#26262D" stroke-width="1"/>
+<line x1="735.0" y1="704" x2="735.0" y2="750" stroke="#3C3C45" stroke-width="1"/>
+<line x1="781.2" y1="704" x2="781.2" y2="750" stroke="#26262D" stroke-width="1"/>
+<line x1="827.5" y1="704" x2="827.5" y2="750" stroke="#26262D" stroke-width="1"/>
+<line x1="873.8" y1="704" x2="873.8" y2="750" stroke="#26262D" stroke-width="1"/>
+<rect x="551.0" y="736.6" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="601.9" y="721.3" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="643.5" y="706.0" width="39.6" height="11.3" rx="4" fill="#D0ACFF" stroke="#D0ACFF" stroke-width="1" />
+<rect x="694.4" y="736.6" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="736.0" y="721.3" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="786.9" y="706.0" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="828.5" y="736.6" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<rect x="879.4" y="721.3" width="39.6" height="11.3" rx="4" fill="#6228AD" />
+<line x1="663.3" y1="701" x2="663.3" y2="753" stroke="#FFFFFF" stroke-width="1.5" stroke-opacity="0.8"/>
+</g>
+</g>
+<g id="status-bar">
+<text x="28.0" y="788.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" >Voices</text>
+<text x="74.0" y="788.0" font-size="12" fill="#D0ACFF" text-anchor="start" font-weight="700" >3</text>
+<text x="98.0" y="788.0" font-size="12" fill="#A7A3B8" text-anchor="start" font-weight="700" >Last</text>
+<text x="128.0" y="788.0" font-size="12" fill="#F2F0F5" text-anchor="start" font-weight="700" >A4 → G#4  (degree 3)</text>
+<text x="906.0" y="788.0" font-size="11" fill="#8E8E9A" text-anchor="end" font-weight="700" >Double-click a knob to type a value</text>
+<line x1="950" y1="796" x2="956" y2="790" stroke="#45454E" stroke-width="1.5"/>
+<line x1="945" y1="796" x2="956" y2="785" stroke="#45454E" stroke-width="1.5"/>
+<line x1="940" y1="796" x2="956" y2="780" stroke="#45454E" stroke-width="1.5"/>
+</g>
+</svg>
