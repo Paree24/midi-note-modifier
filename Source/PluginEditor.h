@@ -62,6 +62,32 @@ private:
     void auditionAt(juce::Point<float> pt);
 };
 
+// v3: the pitch classes a scale degree's chord plays, on a one-octave mini keyboard.
+class ChordPreview : public juce::Component
+{
+public:
+    ChordPreview(MidiNoteModifierProcessor& p, const Theme& t, int degree) : proc(p), theme(t), deg(degree)
+    {
+        setInterceptsMouseClicks(false, false);
+    }
+    void paint(juce::Graphics& g) override;
+private:
+    MidiNoteModifierProcessor& proc;
+    const Theme& theme;
+    int deg;
+};
+
+// v3: what the arpeggiator will play (degree 1's chord, mode, octaves, gate, swing), 16 steps.
+class ArpPreview : public juce::Component
+{
+public:
+    ArpPreview(MidiNoteModifierProcessor& p, const Theme& t) : proc(p), theme(t) { setInterceptsMouseClicks(false, false); }
+    void paint(juce::Graphics& g) override;
+private:
+    MidiNoteModifierProcessor& proc;
+    const Theme& theme;
+};
+
 class MidiNoteModifierEditor : public juce::AudioProcessorEditor, public juce::Timer
 {
 public:
@@ -113,6 +139,7 @@ private:
     std::unique_ptr<AttachT> chordOnA;
     juce::ComboBox chordBoxes[12];
     juce::Label chordDegLabels[12];
+    std::unique_ptr<ChordPreview> chordPreviews[12];
     std::unique_ptr<AttachC> chordA[12];
     juce::Label inversionLabel { {}, "Inversion" };
     juce::ComboBox inversionBox;
@@ -146,6 +173,7 @@ private:
     Knob swingKnob, gateKnob;
     std::unique_ptr<AttachS> swingA, gateA;
     juce::Label swingLabel { {}, "Swing" }, gateLabel { {}, "Gate" };
+    std::unique_ptr<ArpPreview> arpPreview;
 
     juce::Label statusLabel;
 

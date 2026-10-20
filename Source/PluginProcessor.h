@@ -59,6 +59,10 @@ public:
     void panic();
     void queueAuditionNote(bool on, int midiNote, int velocity = 100);
     void resetDiatonicChords();
+    // UI preview: the notes scale degree `degree` plays (its note in octave 4 run
+    // through chords + inversion). Reads the same atomics as the audio thread; a
+    // torn read only costs one stale frame. out needs 8 (kMaxEmit) entries.
+    int previewChord(int degree, int* out);
     bool saveCustomScale(const juce::String& name);
     bool deleteCustomScale(const juce::String& name);
     bool isUserScale(const juce::String& name) const;

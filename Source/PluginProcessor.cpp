@@ -499,6 +499,15 @@ float MidiNoteModifierProcessor::getRateBeats() const
     }
 }
 
+int MidiNoteModifierProcessor::previewChord(int degree, int* out)
+{
+    const auto& iv = currentIntervalsRT();
+    if (degree < 0 || degree >= (int) iv.size()) return 0;
+    int count = 0, deg = 0;
+    buildChordForSnapped(60 + currentRoot() + iv[(size_t) degree], out, count, deg);
+    return count;
+}
+
 int MidiNoteModifierProcessor::buildChordForSnapped(int snapped, int* out, int& count, int& degreeOut)
 {
     int root = currentRoot();

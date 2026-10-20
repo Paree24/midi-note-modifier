@@ -114,7 +114,7 @@ void PianoView::paint(juce::Graphics& g)
         g.drawRoundedRectangle(r, 6.0f, 1.5f);
         if (wide || pc == 0)
         {
-            g.setColour(inScale ? juce::Colour(0xFF55555F) : juce::Colour(0xFF8E8E9A));
+            g.setColour(inScale ? juce::Colour(0xFF55555F) : juce::Colour(0xFF8F8B85));
             g.setFont(juce::Font(juce::FontOptions(wide ? 13.0f : 11.0f, juce::Font::bold)));
             juce::String label = names[(size_t) pc];
             if (pc == 0) label << (n / 12 - 1); // octave on every C
@@ -214,7 +214,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     setResizeLimits(860, 720, 1500, 1150);
 
     mkLabel(titleLabel, "Midi Note Modifier", false);
-    titleLabel.setFont(juce::Font(juce::FontOptions(20.0f, juce::Font::bold)));
+    titleLabel.setFont(juce::Font(juce::FontOptions(18.0f, juce::Font::bold)));
     addAndMakeVisible(titleLabel);
     presetButton.setTooltip("Setups: whole scale + chords + arp presets (factory and your own)");
     presetButton.onClick = [this]
@@ -238,7 +238,8 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     };
     addAndMakeVisible(themeBox);
 
-    panicButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE5484D));
+    panicButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xFFE88A8A));
+    panicButton.setColour(juce::TextButton::textColourOffId, ModifierLookAndFeel::ink());
     panicButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     panicButton.onClick = [this] { proc.panic(); };
     addAndMakeVisible(panicButton);
@@ -251,7 +252,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
 
     // ---- scale ----
     mkLabel(scaleTitle, "Scale", false);
-    scaleTitle.setFont(juce::Font(juce::FontOptions(17.0f, juce::Font::bold)));
+    scaleTitle.setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
     addAndMakeVisible(scaleTitle);
     lockA = std::make_unique<AttachT>(proc.apvts, "scaleLock", lockButton);
     addAndMakeVisible(lockButton);
@@ -345,7 +346,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     addAndMakeVisible(editToggle);
     editToggle.onClick = [this] { piano.editMode = editToggle.getToggleState(); };
 
-    presetName.setTextToShowWhenEmpty("Custom Scale Name...", juce::Colour(0xFF8E8E9A));
+    presetName.setTextToShowWhenEmpty("Custom Scale Name...", juce::Colour(0xFF8F8B85));
     addAndMakeVisible(presetName);
     saveButton.onClick = [this]
     {
@@ -355,7 +356,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
         {
             presetName.clear();
             presetName.setTextToShowWhenEmpty("\"" + n + "\" is a factory scale, pick another name",
-                                              juce::Colour(0xFFE5484D));
+                                              juce::Colour(0xFFE88A8A));
             return;
         }
         {
@@ -364,7 +365,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
         }
         refreshScaleBox();
         presetName.clear();
-        presetName.setTextToShowWhenEmpty("Custom Scale Name...", juce::Colour(0xFF8E8E9A));
+        presetName.setTextToShowWhenEmpty("Custom Scale Name...", juce::Colour(0xFF8F8B85));
     };
     addAndMakeVisible(saveButton);
     deleteScaleButton.setTooltip("Delete the selected user scale");
@@ -388,7 +389,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
 
     // ---- chords ----
     mkLabel(chordTitle, "Chords", false);
-    chordTitle.setFont(juce::Font(juce::FontOptions(17.0f, juce::Font::bold)));
+    chordTitle.setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
     addAndMakeVisible(chordTitle);
     chordOnA = std::make_unique<AttachT>(proc.apvts, "chordOn", chordOn);
     chordOn.onClick = [this] { refreshEnabledStates(); };
@@ -397,8 +398,10 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
     {
         chordDegLabels[i].setText("D" + juce::String(i + 1), juce::dontSendNotification);
         chordDegLabels[i].setJustificationType(juce::Justification::centred);
-        chordDegLabels[i].setColour(juce::Label::textColourId, juce::Colour(0xFFA7A3B8));
+        chordDegLabels[i].setColour(juce::Label::textColourId, juce::Colour(0xFF8F8B85));
         chordDegLabels[i].setFont(juce::Font(juce::FontOptions(11.0f)));
+        chordPreviews[i] = std::make_unique<ChordPreview>(proc, lnf.theme, i);
+        addAndMakeVisible(*chordPreviews[i]);
         addAndMakeVisible(chordDegLabels[i]);
         for (int t = -1; t <= 12; ++t) chordBoxes[i].addItem(Scales::chordTypeName(t), t + 2);
         for (int s = 0; s < MidiNoteModifierProcessor::kNumCustomChords; ++s)
@@ -438,7 +441,7 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
         refreshCustomDesigner();
     };
     addAndMakeVisible(customSlotBox);
-    customChordName.setTextToShowWhenEmpty("Name, e.g. Major 6th...", juce::Colour(0xFF8E8E9A));
+    customChordName.setTextToShowWhenEmpty("Name, e.g. Major 6th...", juce::Colour(0xFF8F8B85));
     addAndMakeVisible(customChordName);
     for (int k = 0; k < MidiNoteModifierProcessor::kMaxChordNotes; ++k)
     {
@@ -476,8 +479,10 @@ MidiNoteModifierEditor::MidiNoteModifierEditor(MidiNoteModifierProcessor& proc_)
 
     // ---- arp ----
     mkLabel(arpTitle, "Arpeggiator", false);
-    arpTitle.setFont(juce::Font(juce::FontOptions(17.0f, juce::Font::bold)));
+    arpTitle.setFont(juce::Font(juce::FontOptions(15.0f, juce::Font::bold)));
     addAndMakeVisible(arpTitle);
+    arpPreview = std::make_unique<ArpPreview>(proc, lnf.theme);
+    addAndMakeVisible(*arpPreview);
     arpOnA = std::make_unique<AttachT>(proc.apvts, "arpOn", arpOn);
     arpLatchA = std::make_unique<AttachT>(proc.apvts, "arpLatch", arpLatch);
     arpOn.onClick = [this] { refreshEnabledStates(); };
@@ -539,7 +544,7 @@ juce::Label* MidiNoteModifierEditor::mkLabel(juce::Label& l, const juce::String&
     l.setText(text, juce::dontSendNotification);
     l.setJustificationType(juce::Justification::centred);
     l.setColour(juce::Label::textColourId,
-                dim ? juce::Colour(0xFFA7A3B8) : juce::Colour(0xFFF2F0F5));
+                dim ? juce::Colour(0xFF8F8B85) : juce::Colour(0xFFD9D5D0));
     return &l;
 }
 
@@ -641,6 +646,7 @@ void MidiNoteModifierEditor::refreshChordSlots()
         bool vis = i < len;
         chordBoxes[i].setVisible(vis);
         chordDegLabels[i].setVisible(vis);
+        if (chordPreviews[i] != nullptr) chordPreviews[i]->setVisible(vis);
     }
     resized();
 }
@@ -752,7 +758,7 @@ void MidiNoteModifierEditor::timerCallback()
                                    : ("-  Stopped | " + juce::String(bpm, 1) + " BPM"),
                            juce::dontSendNotification);
     transportLabel.setColour(juce::Label::textColourId,
-                             playing ? lnf.theme.light() : juce::Colour(0xFF8E8E9A));
+                             playing ? lnf.theme.light() : juce::Colour(0xFF8F8B85));
 
     juce::String st = "Voices " + juce::String(proc.activeVoices.load());
     int li = proc.lastInputNote.load(), ls = proc.lastSnappedNote.load();
@@ -760,33 +766,44 @@ void MidiNoteModifierEditor::timerCallback()
         st += "    " + juce::MidiMessage::getMidiNoteName(li, true, true, 3)
             + " -> " + juce::MidiMessage::getMidiNoteName(ls, true, true, 3);
     statusLabel.setText(st, juce::dontSendNotification);
-    statusLabel.setColour(juce::Label::textColourId, juce::Colour(0xFFA7A3B8));
+    statusLabel.setColour(juce::Label::textColourId, juce::Colour(0xFF8F8B85));
 
     refreshEnabledStates();
     refreshPcButtons();
     syncScaleBoxSelection();
     piano.repaint();
+    for (auto& cp : chordPreviews) if (cp != nullptr && cp->isVisible()) cp->repaint();
+    if (arpPreview != nullptr) arpPreview->repaint();
 }
 
-static void paintPanel(juce::Graphics& g, juce::Rectangle<int> r)
+// v3 panel: charcoal, thin edge, the theme accent as a dot before the title
+static void paintPanel(juce::Graphics& g, juce::Rectangle<int> r, juce::Colour dot)
 {
-    g.setColour(juce::Colour(0xFF222228));
-    g.fillRoundedRectangle(r.toFloat(), 12.0f);
-    g.setColour(juce::Colour(0xFF45454E));
-    g.drawRoundedRectangle(r.toFloat(), 12.0f, 1.0f);
+    g.setColour(ModifierLookAndFeel::panel());
+    g.fillRoundedRectangle(r.toFloat(), 10.0f);
+    g.setColour(ModifierLookAndFeel::panelEdge());
+    g.drawRoundedRectangle(r.toFloat().reduced(0.5f), 10.0f, 1.0f);
+    g.setColour(dot);
+    g.fillEllipse((float) r.getX() + 14.0f, (float) r.getY() + 17.0f, 8.0f, 8.0f);
 }
 
 void MidiNoteModifierEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xFF161619));
-    if (! scalePanelRect.isEmpty()) paintPanel(g, scalePanelRect);
-    if (! chordPanelRect.isEmpty()) paintPanel(g, chordPanelRect);
-    if (! arpPanelRect.isEmpty()) paintPanel(g, arpPanelRect);
+    g.fillAll(juce::Colour(0xFF141518));
+    // the Pastel family mark: four rounded squares
+    const juce::uint32 cols[4] = { 0xffe88a8a, 0xff8fd0c2, 0xffe9a3b8, 0xffa9d58e };
+    for (int i = 0; i < 4; ++i)
+    {
+        g.setColour(juce::Colour(cols[i]));
+        g.fillRoundedRectangle(16.0f + (float) (i % 2) * 10.0f, 12.0f + (float) (i / 2) * 10.0f, 8.0f, 8.0f, 2.0f);
+    }
+    for (auto r : { scalePanelRect, chordPanelRect, arpPanelRect })
+        if (! r.isEmpty()) paintPanel(g, r, lnf.accent());
 }
 
 // Panel heights derived from content (kKnobBox included); the keyboard takes the rest.
 static constexpr int kKnobBox = 44;
-static constexpr int kChordH = 10 + 26 + 6 + 26 + 14 + 8 + (14 + kKnobBox) + 8 + 26 + 10; // 208
+static constexpr int kChordH = 10 + 26 + 6 + 26 + 32 + 8 + (14 + kKnobBox) + 8 + 26 + 10; // 226: + chord previews
 static constexpr int kArpH = 10 + 26 + 8 + (14 + kKnobBox) + 10;  // 128
 static constexpr int kScaleFixed = 10 + 26 + 8 + 26 + 8 + 26 + 8 + 22 + 6;                // 140
 static constexpr int kChromeTop = 62, kGap = 8, kStatusH = 30;
@@ -799,8 +816,8 @@ void MidiNoteModifierEditor::resized()
     const int CW = R - M; // content width
 
     // header
-    titleLabel.setBounds(M, 8, 280, 26);
-    presetButton.setBounds(M - 2, 36, 200, 22);
+    titleLabel.setBounds(M + 14, 6, 280, 26);
+    presetButton.setBounds(M + 12, 34, 200, 22);
     presetBrowser.setBounds(getLocalBounds());
     const int toggleX = M + 120; // section on/off toggles share one column
     panicButton.setBounds(W - 112, 14, 84, 32);
@@ -818,7 +835,7 @@ void MidiNoteModifierEditor::resized()
     chordPanelRect = { 12, scaleBottom + kGap, W - 24, kChordH };
     arpPanelRect = { 12, scaleBottom + kGap + kChordH + kGap, W - 24, kArpH };
     int y = kChromeTop + 10;
-    scaleTitle.setBounds(M, y, 110, 22);
+    scaleTitle.setBounds(M + 10, y, 100, 22);
     lockButton.setBounds(toggleX, y - 2, 95, 26);
     int comboY = y - 2;
     int snapW = 100, rootW = 76;
@@ -851,7 +868,7 @@ void MidiNoteModifierEditor::resized()
 
     // ---- chord panel ----
     y = chordPanelRect.getY() + 10;
-    chordTitle.setBounds(M, y, 110, 22);
+    chordTitle.setBounds(M + 10, y, 100, 22);
     chordOn.setBounds(toggleX, y - 2, 90, 26);
     diatonicButton.setBounds(R - 140, y - 2, 140, 26);
 
@@ -861,10 +878,12 @@ void MidiNoteModifierEditor::resized()
     for (int i = 0; i < 12; ++i)
     {
         chordBoxes[i].setBounds(M + i * (slotW + 6), y, slotW, 26);
-        chordDegLabels[i].setBounds(M + i * (slotW + 6), y + 26, slotW, 14);
+        if (chordPreviews[i] != nullptr) // setSize() runs resized() before the previews exist
+            chordPreviews[i]->setBounds(M + i * (slotW + 6) + 6, y + 30, slotW - 12, 16);
+        chordDegLabels[i].setBounds(M + i * (slotW + 6), y + 46, slotW, 14);
     }
 
-    y += 26 + 14 + 8;
+    y += 26 + 32 + 8;
     int knobBox = kKnobBox;
     inversionLabel.setBounds(M, y, 90, 14);
     inversionBox.setBounds(M, y + 14, 90, 26);
@@ -895,7 +914,7 @@ void MidiNoteModifierEditor::resized()
 
     // ---- arp panel ----
     y = arpPanelRect.getY() + 10;
-    arpTitle.setBounds(M, y, 115, 22);
+    arpTitle.setBounds(M + 10, y, 105, 22);
     arpOn.setBounds(toggleX, y - 2, 90, 26);
     arpLatch.setBounds(toggleX + 90 + 18, y - 2, 110, 26);
 
@@ -910,8 +929,88 @@ void MidiNoteModifierEditor::resized()
     swingLabel.setBounds(kx, y, knobBox, 14); swingKnob.setBounds(kx, y + 14, knobBox, knobBox);
     gateLabel.setBounds(kx + knobBox + grpGap, y, knobBox, 14);
     gateKnob.setBounds(kx + knobBox + grpGap, y + 14, knobBox, knobBox);
+    const int ax = kx + 2 * (knobBox + grpGap);
+    if (arpPreview != nullptr)
+        arpPreview->setBounds(ax, arpPanelRect.getY() + 10, R - ax, arpPanelRect.getHeight() - 20);
 
     statusLabel.setBounds(R - 334, getHeight() - 28, 334, 20);
+}
+
+// ---------- v3 previews ----------
+void ChordPreview::paint(juce::Graphics& g)
+{
+    int notes[16] {}; // previewChord emits at most kMaxEmit (8)
+    const int n = proc.previewChord(deg, notes);
+    bool lit[12] {};
+    int rootPc = -1;
+    for (int k = 0; k < n; ++k) lit[((notes[k] % 12) + 12) % 12] = true;
+    if (n > 0) rootPc = (((notes[0] % 12) + 12) % 12);
+    auto r = getLocalBounds().toFloat();
+    const float ww = r.getWidth() / 7.0f;
+    const int whitePc[7] = { 0, 2, 4, 5, 7, 9, 11 };
+    for (int i = 0; i < 7; ++i)
+    {
+        g.setColour(lit[whitePc[i]] ? theme.light() : juce::Colour(0xFF3A3B40));
+        g.fillRoundedRectangle(r.getX() + ww * (float) i + 0.5f, r.getY(), ww - 1.0f, r.getHeight(), 2.0f);
+    }
+    const int blackAfter[5] = { 0, 1, 3, 4, 5 }; // black key sits after these white keys
+    const int blackPc[5] = { 1, 3, 6, 8, 10 };
+    for (int k = 0; k < 5; ++k)
+    {
+        const float bx = r.getX() + ww * (float) (blackAfter[k] + 1) - ww * 0.3f;
+        g.setColour(lit[blackPc[k]] ? theme.mid().brighter(0.4f) : juce::Colour(0xFF1A1B1F));
+        g.fillRoundedRectangle(bx, r.getY(), ww * 0.6f, r.getHeight() * 0.6f, 1.5f);
+    }
+    juce::ignoreUnused(rootPc);
+}
+
+void ArpPreview::paint(juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    g.setColour(juce::Colour(0xFF16181C));
+    g.fillRoundedRectangle(r, 6.0f);
+    g.setColour(juce::Colour(0xFF24272C));
+    for (int i = 1; i < 16; ++i)
+        g.drawVerticalLine((int) (r.getX() + r.getWidth() * (float) i / 16.0f), r.getY() + 1, r.getBottom() - 1);
+    // the pattern for degree 1's chord
+    int base[16] {}; // previewChord emits at most kMaxEmit (8)
+    int n = juce::jmax(0, proc.previewChord(0, base));
+    if (n == 0) return;
+    std::sort(base, base + n);
+    auto raw = [this](const char* id) { auto* v = proc.apvts.getRawParameterValue(id); return v != nullptr ? v->load() : 0.0f; };
+    const int mode = (int) raw("arpMode"), octs = 1 + (int) raw("arpOct");
+    const float gate = juce::jlimit(0.1f, 1.0f, raw("gate") / 100.0f);    // 10..100 %
+    const float swing = juce::jlimit(0.0f, 0.6f, raw("swing") / 100.0f);   // 0..60 %
+    std::vector<int> up;
+    for (int o = 0; o < octs; ++o)
+        for (int k = 0; k < n; ++k) up.push_back(base[k] + 12 * o);
+    std::vector<int> seq;
+    if (mode == 1) seq.assign(up.rbegin(), up.rend());
+    else if (mode == 2 || mode == 3)
+    {
+        std::vector<int> a = up, b(up.rbegin(), up.rend());
+        if (mode == 3) std::swap(a, b);
+        seq = a;
+        for (size_t i = 1; i + 1 < b.size(); ++i) seq.push_back(b[i]);
+    }
+    else if (mode == 4)
+    {
+        juce::Random rng(7);   // a fixed demo shuffle
+        for (int i = 0; i < 16; ++i) seq.push_back(up[(size_t) rng.nextInt((int) up.size())]);
+    }
+    else seq = up;   // Up / Played
+    if (seq.empty()) return;
+    const int lo = up.front(), hi = up.back();
+    const float cw = r.getWidth() / 16.0f;
+    const float rows = (float) juce::jmax(1, hi - lo);
+    for (int s = 0; s < 16; ++s)
+    {
+        const int note = seq[(size_t) s % seq.size()];
+        const float y = r.getBottom() - 10.0f - (r.getHeight() - 22.0f) * (float) (note - lo) / rows;
+        const float x = r.getX() + cw * (float) s + (s % 2 == 1 ? swing * cw * 0.5f : 0.0f);
+        g.setColour(theme.light().withAlpha(s < (int) seq.size() ? 0.95f : 0.55f));
+        g.fillRoundedRectangle(x + 2.0f, y - 4.0f, juce::jmax(3.0f, (cw - 4.0f) * gate), 8.0f, 3.0f);
+    }
 }
 
 juce::AudioProcessorEditor* MidiNoteModifierProcessor::createEditor()
